@@ -1,7 +1,7 @@
 {
   "name": "klair",
   "version": "1.0.0",
-  "description": "Claire: in-place contextual help that keeps you on your current screen",
+  "description": "Klair: in-place contextual help that keeps you on your current screen",
   "main": "./out/main/index.js",
   "scripts": {
     "format": "prettier --write .",
@@ -17,7 +17,8 @@
     "build:win": "pnpm build && electron-builder --win",
     "build:mac": "electron-vite build && electron-builder --mac",
     "build:linux": "electron-vite build && electron-builder --linux",
-    "test": "tsx --test src/**/*.test.ts"
+    "test": "tsx --test src/**/*.test.ts",
+    "build:native": "cd native/fn-key && npx --yes node-gyp@10.2.0 rebuild --target=$(node -p \"require('electron/package.json').version\") --dist-url=https://electronjs.org/headers"
   },
   "dependencies": {
     "@electron-toolkit/preload": "^3.0.2",
@@ -60,5 +61,6 @@
       "electron",
       "esbuild"
     ]
-  }
+  },
+  "productName": "Klair"
 }

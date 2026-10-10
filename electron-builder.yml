@@ -1,5 +1,5 @@
-appId: com.electron.app
-productName: klair
+appId: com.klair.app
+productName: Klair
 directories:
   buildResources: build
 files:
@@ -11,6 +11,11 @@ files:
   - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
 asarUnpack:
   - resources/**
+extraResources:
+  - from: native/fn-key/build/Release
+    to: native/fn-key/build/Release
+    filter:
+      - '*.node'
 win:
   executableName: klair
 nsis:
@@ -21,10 +26,8 @@ nsis:
 mac:
   entitlementsInherit: build/entitlements.mac.plist
   extendInfo:
-    - NSCameraUsageDescription: Application requests access to the device's camera.
-    - NSMicrophoneUsageDescription: Application requests access to the device's microphone.
-    - NSDocumentsFolderUsageDescription: Application requests access to the user's Documents folder.
-    - NSDownloadsFolderUsageDescription: Application requests access to the user's Downloads folder.
+    - LSUIElement: true
+    - NSAppleEventsUsageDescription: Klair reads the front app, window title and browser URL so it can link related tabs (optional).
   notarize: false
 dmg:
   artifactName: ${name}-${version}.${ext}

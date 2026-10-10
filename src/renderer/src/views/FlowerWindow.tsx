@@ -25,6 +25,13 @@ export function FlowerWindow(): React.JSX.Element | null {
   const res = useBloom(open ? 30 : 11)
   const cell = open ? (big ? 4 : 3) : 4
 
+  const hasPill =
+    !!s && s.flower !== 'off' && !open && (!!s.notice || s.observing === 'paused' || s.nudge)
+  useEffect(() => {
+    // Never leave the corner clickable once the pill is gone.
+    if (!hasPill) void klair.setFlowerInteractive(false)
+  }, [hasPill])
+
   if (!s || s.flower === 'off') return null
 
   const hover = {

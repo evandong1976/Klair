@@ -115,7 +115,17 @@ function checkFn(): HealthCheck {
   }
 }
 
-export async function runHealth(opts: { skipModel?: boolean } = {}): Promise<HealthReport> {
+let inflight: Promise<HealthReport> | null = null
+
+/** Run every check. Concurrent callers share one run (avoids racing migrations). */
+export function runHealth(opts: { skipModel?: boolean } = {}): Promise<HealthReport> {
+  inflight ??= doRunHealth(opts).finally(() => {
+    inflight = null
+  })
+  return inflight
+}
+
+async function doRunHealth(opts: { skipModel?: boolean }): Promise<HealthReport> {
   const [openrouter, tiger, graphify] = await Promise.all([
     opts.skipModel && last
       ? Promise.resolve(last.checks.find((c) => c.id === 'openrouter') as HealthCheck)

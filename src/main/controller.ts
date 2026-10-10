@@ -16,7 +16,7 @@ import { config } from './config'
 import { ControllerCore, type Effect } from './controller-core'
 import * as db from './db'
 import { answerToText, runAssistance } from './execute'
-import { healthOk, lastHealth, runHealth } from './health'
+import { lastHealth, runHealth } from './health'
 import { cancelIndex, scheduleIndex } from './indexer'
 import { makeVisionNote, writeNoteFile, type VisionNote } from './notes'
 import { notesDir, sessionDir, shotsDir } from './paths'
@@ -139,7 +139,7 @@ export async function startSession(name: string): Promise<void> {
     notice({ kind: 'screen-access' })
     return
   }
-  if (!healthOk('tigerdata')) {
+  if (health.checks.find((c) => c.id === 'tigerdata')?.status === 'fail') {
     setState({
       saving: false,
       notice: { kind: 'not-saving', detail: 'TigerData is not connected' }
@@ -320,7 +320,7 @@ async function onFrame(frame: Frame): Promise<void> {
   if (!sid || !getState().saving) return
   const now = Date.now()
   lastMeta = frame.meta
-  activity.push({
+  const row: db.ActivityRow = {
     time: frame.at,
     sessionId: sid,
     captureId: null,
@@ -330,7 +330,8 @@ async function onFrame(frame: Frame): Promise<void> {
     topic: currentTopic,
     changed: frame.changed,
     dwellMs: frame.changed ? 0 : now - lastChangeAt
-  })
+  }
+  activity.push(row)
   if (!frame.changed) return
   lastChangeAt = now
 
@@ -346,7 +347,7 @@ async function onFrame(frame: Frame): Promise<void> {
     persistenceFailed(err)
     return
   }
-  activity[activity.length - 1].captureId = id
+  row.captureId = id
   const mem: CaptureMem = { id, path, capturedAt: frame.at.toISOString(), note: null }
   captures.set(id, mem)
   if (captures.size > 40) captures.delete(captures.keys().next().value as number)
@@ -421,7 +422,9 @@ export function openPanel(): void {
   core.setPanelOpen(true)
   const s = getState()
   const view =
-    s.answer && s.answer.status !== 'cancelled' && s.panel === 'answer' ? 'answer' : 'ideas'
+    s.answer && (s.answer.status === 'pending' || s.answer.status === 'streaming')
+      ? 'answer'
+      : 'ideas'
   if (!s.suggestions) apply(core.requestNow())
   setState({ panel: view, nudge: false })
   windows.setPanelView(view)

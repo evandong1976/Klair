@@ -176,7 +176,7 @@ function appWindow(
 
 export function openStart(): void {
   if (startWin && !startWin.isDestroyed()) return startWin.focus()
-  startWin = appWindow('start', { width: 560, height: 760, resizable: false })
+  startWin = appWindow('start', { width: 560, height: 860, resizable: false })
   startWin.on('closed', () => (startWin = null))
 }
 

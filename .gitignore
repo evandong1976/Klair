@@ -7,3 +7,4 @@ out
 .env
 graphify-out
 .env.local
+native/fn-key/build

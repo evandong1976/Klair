@@ -264,7 +264,7 @@ export function SessionsWindow(): React.JSX.Element {
                         <div key={r.topic} className="flex flex-col gap-1">
                           <div className="flex justify-between gap-2 text-[13px]">
                             <span className="font-semibold truncate">{r.topic}</span>
-                            <span className="font-mono text-[12px] text-muted">
+                            <span className="font-mono text-[12px] text-muted whitespace-nowrap">
                               {fmtSecs(r.seconds)}
                             </span>
                           </div>
