@@ -12,6 +12,8 @@ export interface MetricLine {
   outputTokens?: number
   contextChars?: number
   ms: number
+  /** Answers only: time until the first streamed word. */
+  firstMs?: number
   sessionId?: number | null
 }
 

@@ -30,7 +30,7 @@ export function healthOk(id: HealthCheck['id']): boolean {
 }
 
 async function checkOpenRouter(): Promise<HealthCheck> {
-  const base = { id: 'openrouter' as const, label: 'Claude via OpenRouter' }
+  const base = { id: 'openrouter' as const, label: 'AI models via OpenRouter' }
   if (!config.openrouterKey) {
     return {
       ...base,

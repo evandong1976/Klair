@@ -16,8 +16,12 @@ export const config = {
   databaseUrl: env.DATABASE_URL ?? '',
   graphifyBin: env.GRAPHIFY_BIN || 'graphify',
   graphifyModel: env.GRAPHIFY_MODEL || 'anthropic/claude-haiku-5.5',
-  fastModel: pick('FAST_MODEL') ?? 'anthropic/claude-haiku-5.5',
-  answerModel: pick('ANSWER_MODEL') ?? 'anthropic/claude-sonnet-5.5',
+  // Picked for speed from a benchmark on real Klair prompts (2026-10-10, via OpenRouter):
+  //   screen note: Gemini 3.5 Flash-Lite ~2.5 s, GPT-5.4 mini ~4.0 s, Claude Haiku 5.5 ~5.2 s
+  //   answer:      GPT-5.4 mini ~1.6 s (first word ~0.6 s), Claude Haiku 5.5 ~2.7 s
+  // Any OpenRouter model that accepts images works; override with the env vars.
+  fastModel: pick('FAST_MODEL') ?? 'google/gemini-3.5-flash-lite',
+  answerModel: pick('ANSWER_MODEL') ?? 'openai/gpt-5.4-mini',
 
   captureMs: num('CAPTURE_MS', 4000),
   dwellMs: num('DWELL_MS', 60_000),

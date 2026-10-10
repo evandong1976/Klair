@@ -329,7 +329,7 @@ export function SessionsWindow(): React.JSX.Element {
                     {`Screenshots on this Mac · notes and answers in TigerData. Deleted after ${detail.privacy.retentionDays} days.`}
                   </p>
                   <p className="m-0 text-[14px] leading-[1.5]">
-                    {`Sent to Claude ${detail.privacy.sentToClaude} times this session: new screens for notes, plus ideas and answers.`}
+                    {`Sent to the AI model ${detail.privacy.sentToClaude} times this session: new screens for notes, plus ideas and answers.`}
                   </p>
                 </section>
               </aside>

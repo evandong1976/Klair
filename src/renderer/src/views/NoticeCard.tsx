@@ -34,7 +34,7 @@ export function NoticeCard({ notice }: { notice: Notice }): React.JSX.Element | 
         <div className={card}>
           <span className="text-[15.5px] font-extrabold">Couldn&apos;t finish that</span>
           <span className="text-[13.5px] leading-[1.5] text-ink-2">
-            Claude stopped responding. Anything already shown is saved; nothing else was lost.
+            The AI model stopped responding. Anything already shown is saved; nothing else was lost.
           </span>
           <div className="flex justify-end gap-2">
             <Button onClick={dismiss} keyHint="esc">

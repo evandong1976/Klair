@@ -1,6 +1,7 @@
 import { streamText } from 'ai'
 import type { AnswerBlock, AnswerOutput } from '../shared/blocks'
-import { answerModel, fenceUntrusted } from './ai'
+import { answerModel, fenceUntrusted, withoutReasoning } from './ai'
+import { config } from './config'
 import { baselineMode, recordMetric } from './metrics'
 import type { Retrieved } from './retrieve'
 
@@ -59,31 +60,41 @@ export async function runAssistance(input: ExecuteInput): Promise<ExecuteResult>
     .filter(Boolean)
     .join('\n\n')
 
-  const result = streamText({
-    model: answerModel,
-    system: SYSTEM,
-    abortSignal: input.signal,
-    messages: [
-      {
-        role: 'user',
-        content: input.png
-          ? [
-              { type: 'text', text },
-              { type: 'image', image: input.png, mediaType: 'image/png' }
-            ]
-          : [{ type: 'text', text }]
-      }
-    ]
-  })
-
   const basedOn = input.retrieved.text ? 'Your screen and earlier notes' : 'Your screen'
-  let markdown = ''
-  for await (const delta of result.textStream) {
-    if (input.signal.aborted) break
-    markdown += delta
-    input.onPartial({ basedOn, blocks: [{ type: 'text', markdown }], reshape: [] })
-  }
-  const usage = await result.usage
+  const { markdown, firstMs, usage } = await withoutReasoning(config.answerModel, async (opts) => {
+    // streamText reports a failed request through onError, not by throwing.
+    let failed: unknown = null
+    const result = streamText({
+      model: answerModel,
+      system: SYSTEM,
+      abortSignal: input.signal,
+      onError: ({ error }) => {
+        failed = error
+      },
+      ...opts,
+      messages: [
+        {
+          role: 'user',
+          content: input.png
+            ? [
+                { type: 'text', text },
+                { type: 'image', image: input.png, mediaType: 'image/png' }
+              ]
+            : [{ type: 'text', text }]
+        }
+      ]
+    })
+    let markdown = ''
+    let firstMs: number | undefined
+    for await (const delta of result.textStream) {
+      if (input.signal.aborted) break
+      if (delta) firstMs ??= Date.now() - t
+      markdown += delta
+      input.onPartial({ basedOn, blocks: [{ type: 'text', markdown }], reshape: [] })
+    }
+    if (failed) throw failed
+    return { markdown, firstMs, usage: await result.usage }
+  })
   if (!markdown.trim()) throw new Error('The model returned an empty answer')
   const output: AnswerOutput = {
     title: input.title,
@@ -95,6 +106,7 @@ export async function runAssistance(input: ExecuteInput): Promise<ExecuteResult>
     kind: 'answer',
     mode: baselineMode ? 'baseline' : 'retrieval',
     ms: Date.now() - t,
+    firstMs,
     inputTokens: usage.inputTokens,
     outputTokens: usage.outputTokens,
     contextChars: input.retrieved.chars,

@@ -10,15 +10,15 @@ A background macOS assistant that keeps you on your current screen. A see-throug
 
 ## Stack
 
-| Layer | Technology | Where |
-| --- | --- | --- |
-| Desktop app | Electron + electron-vite, pnpm | `src/main`, `src/preload` |
-| Interface | React + TypeScript + Tailwind v4 | `src/renderer` |
-| AI | Vercel AI SDK + Claude via OpenRouter | `src/main/ai.ts`, `suggest.ts`, `execute.ts`, `notes.ts` |
-| Database | TigerData (Postgres + TimescaleDB): canonical records, activity time-series, BM25 note search | `src/main/db.ts` |
-| Cache | SQLite (`node:sqlite`): screenshot hash → note, safe to delete | `src/main/cache.ts` |
-| Context retrieval | Graphify CLI + TigerData search, merged | `src/main/graphify.ts`, `retrieve.ts` |
-| fn key | Optional native addon (CGEventTap) | `native/fn-key` |
+| Layer             | Technology                                                                                      | Where                                                    |
+| ----------------- | ----------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
+| Desktop app       | Electron + electron-vite, pnpm                                                                  | `src/main`, `src/preload`                                |
+| Interface         | React + TypeScript + Tailwind v4                                                                | `src/renderer`                                           |
+| AI                | Vercel AI SDK via OpenRouter (Gemini 3.5 Flash-Lite for screen notes, GPT-5.4 mini for answers) | `src/main/ai.ts`, `suggest.ts`, `execute.ts`, `notes.ts` |
+| Database          | TigerData (Postgres + TimescaleDB): canonical records, activity time-series, BM25 note search   | `src/main/db.ts`                                         |
+| Cache             | SQLite (`node:sqlite`): screenshot hash → note, safe to delete                                  | `src/main/cache.ts`                                      |
+| Context retrieval | Graphify CLI + TigerData search, merged                                                         | `src/main/graphify.ts`, `retrieve.ts`                    |
+| fn key            | Optional native addon (CGEventTap)                                                              | `native/fn-key`                                          |
 
 ## Setup
 
@@ -42,11 +42,11 @@ pnpm dev
 
 ### macOS permissions
 
-| Permission | Why | Where |
-| --- | --- | --- |
-| Screen Recording | Capture during a session | System Settings › Privacy & Security › Screen Recording |
-| Input Monitoring | The fn key (optional) | System Settings › Privacy & Security › Input Monitoring |
-| Automation | Front app, window title, browser URL (`KLAIR_ACTIVE_WINDOW=applescript`, optional) | Prompted on first use |
+| Permission       | Why                                                                                | Where                                                   |
+| ---------------- | ---------------------------------------------------------------------------------- | ------------------------------------------------------- |
+| Screen Recording | Capture during a session                                                           | System Settings › Privacy & Security › Screen Recording |
+| Input Monitoring | The fn key (optional)                                                              | System Settings › Privacy & Security › Input Monitoring |
+| Automation       | Front app, window title, browser URL (`KLAIR_ACTIVE_WINDOW=applescript`, optional) | Prompted on first use                                   |
 
 In `pnpm dev`, macOS attributes these permissions to **Electron** or to the terminal that launched it, so "Klair" never appears in System Settings. To get a real **Klair** entry, run the app as its own bundle:
 
@@ -60,13 +60,13 @@ Quit `pnpm dev` first (only one Klair runs at a time). Click **Allow** in the St
 ## Demo script (from the brief)
 
 1. Run `pnpm dev`. On the Start window, check that every connection row is green, name the session "ML study" and press **⌘↵**.
-2. Open an encyclopedia article on machine learning, then switch to its *Gradient descent* page and stay on the *Learning rate* section.
+2. Open an encyclopedia article on machine learning, then switch to its _Gradient descent_ page and stay on the _Learning rate_ section.
 3. After the pause time (1 min by default; change it in the menu bar popover), "3 ideas for this section" appears beside the flower.
-4. Tap **fn** / **⌃⌥K**: the flower blooms and the panel shows *Where you are* + three ideas.
+4. Tap **fn** / **⌃⌥K**: the flower blooms and the panel shows _Where you are_ + three ideas.
 5. Press **⌘2** (the hands-on idea). The answer streams in as a slider demo plus code. Drag the slider, try **⌥3** (overshoot), **⌘C** copies the code.
 6. Press **esc**: the panel closes and focus returns to the article.
-7. Open the menu bar popover › **All sessions** (⌘O). The timeline shows the capture, *You asked* and *Klair's answer*. **Session insights** shows time on topic and the stuck spot from the TigerData continuous aggregate.
-8. Switch back to the *Machine learning* tab and open Klair. Ideas and answers cite "Earlier tab · …" from TigerData search and Graphify.
+7. Open the menu bar popover › **All sessions** (⌘O). The timeline shows the capture, _You asked_ and _Klair's answer_. **Session insights** shows time on topic and the stuck spot from the TigerData continuous aggregate.
+8. Switch back to the _Machine learning_ tab and open Klair. Ideas and answers cite "Earlier tab · …" from TigerData search and Graphify.
 
 **Token measurement:** run the demo twice, once normally and once with `KLAIR_BASELINE=full`, then compare `inputTokens` in `~/Library/Application Support/klair/metrics.jsonl`. For Graphify's indexing cost, set `GRAPHIFY_OPENROUTER_KEY` so it shows separately in OpenRouter, or run `graphify benchmark <session>/graphify-out/graph.json`.
 
@@ -74,7 +74,7 @@ Quit `pnpm dev` first (only one Klair runs at a time). Click **Allow** in the St
 
 - **Screenshots:** this Mac only, at `~/Library/Application Support/klair/sessions/<id>/shots/`.
 - **Notes, prompts, answers:** your TigerData database.
-- **Sent to Claude (OpenRouter):** each new screen (for a short note), plus the relevant notes for ideas and answers. Graphify extraction also uses OpenRouter.
+- **Sent to AI models (Google and OpenAI by default, via OpenRouter):** each new screen (for a short note), plus the relevant notes for ideas and answers. Graphify extraction also uses OpenRouter.
 - **Deleting a session** removes its TigerData rows, screenshots, notes, Graphify index and cache entries. Sessions older than `KLAIR_RETENTION_DAYS` are removed automatically.
 
 ## Scripts

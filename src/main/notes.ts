@@ -2,7 +2,8 @@ import { generateText, Output } from 'ai'
 import { writeFile } from 'fs/promises'
 import { join } from 'path'
 import { z } from 'zod'
-import { fastModel } from './ai'
+import { fastModel, withoutReasoning } from './ai'
+import { config } from './config'
 import { cache } from './cache'
 import { baselineMode, recordMetric } from './metrics'
 import type { ActiveWindow } from './activewindow'
@@ -58,28 +59,30 @@ export async function makeVisionNote(
   }
   const t = Date.now()
   const metaLine = [meta.appName, meta.windowTitle, meta.url].filter(Boolean).join(' · ')
-  const res = await generateText({
-    model: fastModel,
-    system: SYSTEM,
-    abortSignal: signal,
-    output: Output.object({ schema: noteSchema }),
-    // Transcribing a screenshot needs no reasoning pass; skipping it returns the note sooner.
-    providerOptions: { openrouter: { reasoning: { enabled: false } } },
-    messages: [
-      {
-        role: 'user',
-        content: [
-          {
-            type: 'text',
-            text: metaLine
-              ? `Window metadata (may be incomplete): ${metaLine}`
-              : 'No window metadata.'
-          },
-          { type: 'image', image: png, mediaType: 'image/png' }
-        ]
-      }
-    ]
-  })
+  // Transcribing a screenshot needs no reasoning pass; skipping it returns the note sooner.
+  const res = await withoutReasoning(config.fastModel, (opts) =>
+    generateText({
+      model: fastModel,
+      system: SYSTEM,
+      abortSignal: signal,
+      output: Output.object({ schema: noteSchema }),
+      ...opts,
+      messages: [
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'text',
+              text: metaLine
+                ? `Window metadata (may be incomplete): ${metaLine}`
+                : 'No window metadata.'
+            },
+            { type: 'image', image: png, mediaType: 'image/png' }
+          ]
+        }
+      ]
+    })
+  )
   recordMetric({
     kind: 'note',
     mode: baselineMode ? 'baseline' : 'retrieval',

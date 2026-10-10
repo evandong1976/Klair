@@ -150,8 +150,8 @@ export function StartWindow(): React.JSX.Element {
       </div>
 
       <p className="m-0 text-[12.5px] leading-[1.5] text-ink-3 text-pretty">
-        Klair sends each new screen to Claude (via OpenRouter) to take notes, and the relevant notes
-        when it makes ideas and answers. Pause anytime with fn P or ⌃⌥P.
+        Klair sends each new screen to an AI model (via OpenRouter) to take notes, and the relevant
+        notes when it makes ideas and answers. Pause anytime with fn P or ⌃⌥P.
       </p>
 
       <div className="mt-auto flex justify-end gap-2.5">

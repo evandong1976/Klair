@@ -210,7 +210,7 @@ export function TrayWindow(): React.JSX.Element | null {
 
       <footer className="mt-auto pt-3 px-[18px] pb-4 flex flex-col gap-2.5">
         <span className="text-[12.5px] leading-[1.45] text-ink-3">
-          Screenshots stay on this Mac. Notes sync to your TigerData database; Claude sees new
+          Screenshots stay on this Mac. Notes sync to your TigerData database; an AI model sees new
           screens to take notes, and the relevant ones to make ideas and answers.
         </span>
         <div className="flex justify-between gap-3 text-[13px] font-bold">
