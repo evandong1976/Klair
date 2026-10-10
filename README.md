@@ -57,11 +57,11 @@ pnpm dev
 In `pnpm dev`, macOS attributes these permissions to **Electron** or to the terminal that launched it, so "Klair" never appears in System Settings. To get a real **Klair** entry, run the app as its own bundle:
 
 ```bash
-ln -s "$PWD/.env" ~/Library/Application\ Support/klair/.env   # once: the app starts outside the repo
-pnpm app                                                      # builds, signs and opens dist/mac-arm64/Klair.app
+pnpm build:native   # once: the fn key addon, bundled into the app
+pnpm app            # builds, signs, copies your env files and opens dist/mac-arm64/Klair.app
 ```
 
-Quit `pnpm dev` first (only one Klair runs at a time). Click **Allow** in the Start window to make macOS list Klair, switch it on, then quit and reopen Klair. `pnpm app` signs the build with a local self-signed certificate (`scripts/sign-dev.sh`, kept in its own `klair-dev` keychain), so the grant survives rebuilds. If System Settings shows Klair as allowed but the app says it isn't, the entry is stale: run `tccutil reset ScreenCapture com.klair.app`, then allow it again.
+Quit `pnpm dev` first (only one Klair runs at a time). The app starts outside the repo, so `pnpm app` copies `.env.local` / `.env` into `~/Library/Application Support/Klair` (`scripts/copy-env.sh`; rerun `pnpm app` after editing them). Click **Allow** on a permission row in the Start window to make macOS list Klair, then switch it on. For the fn key, **Check again** picks up the grant; Screen Recording needs Klair quit and reopened. `pnpm app` signs the build with a local self-signed certificate (`scripts/sign-dev.sh`, kept in its own `klair-dev` keychain), so the grant survives rebuilds. If System Settings shows Klair as allowed but the app says it isn't, the entry is stale: run `tccutil reset ScreenCapture com.klair.app`, then allow it again.
 
 ## Demo script (from the brief)
 

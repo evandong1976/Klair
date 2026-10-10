@@ -16,7 +16,7 @@
     "build:unpack": "pnpm build && electron-builder --dir",
     "build:win": "pnpm build && electron-builder --win",
     "build:mac": "electron-vite build && electron-builder --mac",
-    "app": "electron-vite build && electron-builder --mac --dir && ./scripts/sign-dev.sh && open dist/mac-arm64/Klair.app",
+    "app": "electron-vite build && electron-builder --mac --dir && ./scripts/sign-dev.sh && ./scripts/copy-env.sh && open dist/mac-arm64/Klair.app",
     "build:linux": "electron-vite build && electron-builder --linux",
     "test": "tsx --test src/**/*.test.ts",
     "build:native": "cd native/fn-key && npx --yes node-gyp@10.2.0 rebuild --target=$(node -p \"require('electron/package.json').version\") --dist-url=https://electronjs.org/headers"

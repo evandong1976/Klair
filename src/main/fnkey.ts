@@ -8,32 +8,44 @@ import { app } from 'electron'
 // Addon contract: start(cb: (event: 'tap' | 'chord', key?: string) => void): boolean; stop(): void
 //   'tap'   → fn pressed and released with no other key
 //   'chord' → fn held while `key` ('p' | 'q') was pressed
+// start() also asks macOS for Input Monitoring when it isn't granted yet. That request
+// is what makes Klair appear in System Settings › Input Monitoring at all.
 
 interface FnAddon {
   start(cb: (event: 'tap' | 'chord', key?: string) => void): boolean
   stop(): void
 }
 
+type Handlers = { onTap: () => void; onChord: (key: string) => void }
+
 let addon: FnAddon | null = null
+let handlers: Handlers | null = null
 let status: { loaded: boolean; running: boolean; detail: string } = {
   loaded: false,
   running: false,
   detail: 'Not loaded'
 }
 
-export function startFnKey(handlers: {
-  onTap: () => void
-  onChord: (key: string) => void
-}): typeof status {
-  if (process.platform !== 'darwin') {
-    status = { loaded: false, running: false, detail: 'fn key capture is macOS-only' }
-    return status
-  }
+function load(): FnAddon | null {
+  if (addon) return addon
   try {
     const base = app.isPackaged ? process.resourcesPath : app.getAppPath()
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     addon = require(join(base, 'native', 'fn-key', 'build', 'Release', 'fn_key.node')) as FnAddon
   } catch {
+    addon = null
+  }
+  return addon
+}
+
+function tryStart(): typeof status {
+  if (process.platform !== 'darwin') {
+    status = { loaded: false, running: false, detail: 'fn key capture is macOS-only' }
+    return status
+  }
+  if (status.running || !handlers) return status
+  const a = load()
+  if (!a) {
     status = {
       loaded: false,
       running: false,
@@ -41,18 +53,33 @@ export function startFnKey(handlers: {
     }
     return status
   }
-  const ok = addon.start((event, key) => {
-    if (event === 'tap') handlers.onTap()
-    else if (key) handlers.onChord(key)
+  const h = handlers
+  const ok = a.start((event, key) => {
+    if (event === 'tap') h.onTap()
+    else if (key) h.onChord(key)
   })
   status = ok
     ? { loaded: true, running: true, detail: 'fn key active' }
     : {
         loaded: true,
         running: false,
-        detail: 'Input Monitoring not granted, so fn is unavailable. Using ⌃⌥K instead.'
+        detail:
+          'Input Monitoring not granted. Allow Klair, then Check again (or reopen Klair). Using ⌃⌥K meanwhile.'
       }
   return status
+}
+
+export function startFnKey(h: Handlers): typeof status {
+  handlers = h
+  return tryStart()
+}
+
+/**
+ * Try again after the user grants Input Monitoring (or builds the addon) without
+ * restarting Klair. Also re-sends the permission request, so Klair gets listed.
+ */
+export function retryFnKey(): typeof status {
+  return tryStart()
 }
 
 export function stopFnKey(): void {

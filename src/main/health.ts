@@ -5,7 +5,7 @@ import { fastModel } from './ai'
 import { cache } from './cache'
 import { config } from './config'
 import { capabilities, getPool, migrate, ping, timescaleVersion } from './db'
-import { fnKeyStatus } from './fnkey'
+import { retryFnKey } from './fnkey'
 import { graphifyAvailable } from './graphify'
 import { recordMetric } from './metrics'
 
@@ -106,7 +106,8 @@ function checkScreen(): HealthCheck {
 }
 
 function checkFn(): HealthCheck {
-  const s = fnKeyStatus()
+  // Retries the tap, so a grant made while Klair is open is picked up by "Check again".
+  const s = retryFnKey()
   return {
     id: 'fnkey',
     label: 'The fn key',

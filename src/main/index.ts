@@ -13,7 +13,10 @@ import * as windows from './windows'
 // Klair runs in the background: a flower in the top-right corner, a panel on fn,
 // and a menu bar icon. There is no main window.
 
-if (!app.requestSingleInstanceLock()) app.quit()
+// app.quit() would still run whenReady below and start a second flower, tray and
+// fn tap; exit at once instead. The running Klair shows its Start window.
+if (!app.requestSingleInstanceLock()) app.exit(0)
+app.on('second-instance', () => windows.openStart())
 
 app.whenReady().then(async () => {
   electronApp.setAppUserModelId('com.klair.app')

@@ -1,14 +1,14 @@
 # Klair build progress
 
-## Handoff (updated 2026-10-10 17:20 ET, by build session · claude-opus-5-5)
-- **Milestone:** 7 done in code; 8 (prove it) needs the Mac. Everything that can be built and checked in Linux is done.
-- **Just finished:** a headless-Chromium preview of all 13 screens with mock data (found and fixed a font CSP bug), the rename and packaging changes (`com.klair.app`, LSUIElement, usage strings), `.env.example`, the `native/fn-key` addon source (unbuilt), README with setup and demo script, `docs/TIGERDATA.md`, and five bug fixes from code review (health-check race, activity row after flush, TimescaleDB-less start, clickable corner, reopen during streaming).
+## Handoff (updated 2026-10-10 18:05 ET, by Mac session · claude-opus-5-5)
+- **Milestone:** 8 (prove it) started on the Mac. The packaged app (`pnpm app`) launches; health: screen=ok, openrouter=ok, graphify=ok, cache=ok, fnkey=warn (waiting on the Input Monitoring grant), tigerdata=fail (network, see Broken).
+- **Just finished:** permission and startup fixes. The fn addon compiles on macOS 26 / Electron 39 and is bundled; the fn row's Allow now registers Klair with Input Monitoring and Check again picks up the grant without a restart; `pnpm app` copies env files into the app's data folder; a second launch exits immediately instead of starting a second Klair.
 - **In progress:** nothing half-done
-- **Next step (on the Mac):** `pnpm install && pnpm dev`, then walk the "Verify on the Mac" list below in order. First fix anything the Start window's Connections rows show red (OpenRouter model slugs are the most likely failure).
-- **Broken / failing:** nothing known; typecheck, lint, 7 unit tests, build and the 13-screen preview pass
+- **Next step:** grant Input Monitoring to Klair, press Check again, confirm fn opens the panel. Get TigerData reachable, then walk the rest of "Verify on the Mac".
+- **Broken / failing:** TigerData times out from the current network: outbound TCP to port 31846 is blocked (portquiz.net:31846 also times out; github.com:443 works). Use another network, a phone hotspot or a VPN. Not a code issue.
 - **Decisions made this session:** see the Decisions log
-- **Blocked on / questions for the user:** none
-- **How to verify current state:** `pnpm install && pnpm typecheck && pnpm lint && pnpm test && pnpm build`
+- **Blocked on / questions for the user:** a network that allows TigerData's port
+- **How to verify current state:** `pnpm install && pnpm typecheck && pnpm lint && pnpm test && pnpm build:native && pnpm app`
 
 ---
 
@@ -23,7 +23,7 @@
 - [ ] 8. Prove it: demo run, acceptance criteria, token measurements (needs the Mac)
 
 ## Verify on the Mac (can't be tested from the Linux build workspace)
-- `pnpm build:native` compiles `native/fn-key` (unverified C, CGEventTap); fn tap opens Klair, fn+P / fn+Q work
+- ~~`pnpm build:native` compiles `native/fn-key`~~ (compiles cleanly, 2026-10-10); still to check: fn tap opens Klair, fn+P / fn+Q work
 - `pnpm dev` launches; flower window top-right; ⌃⌥K opens the panel
 - Health: OpenRouter slugs `anthropic/claude-haiku-5.5` / `anthropic/claude-sonnet-5.5` accept images; TigerData migrate output (`tigerdata: … unavailable` lines in the console show which optional features failed)
 - Screen Recording prompt and capture; `setContentProtection` hides Klair windows from captures
@@ -31,10 +31,10 @@
 - Panel focus and return-focus-on-close (`app.hide()` + `flower.showInactive()`); vibrancy look
 
 ## Health checks
-_Not run on a Mac yet._
+- 2026-10-10, packaged app: screen=ok, openrouter=ok, graphify=ok, cache=ok, fnkey=warn (Input Monitoring not yet granted), tigerdata=fail (port 31846 blocked by the network)
 
 ## Stubs and simulations
-- fn key: `native/fn-key/src/fn_key.c` is written but has never been compiled. ⌃⌥K / ⌃⌥P / ⌃⌥Q work as fallbacks.
+- fn key: `native/fn-key/src/fn_key.c` compiles and loads; the event tap itself is unverified until Input Monitoring is granted. ⌃⌥K / ⌃⌥P / ⌃⌥Q work as fallbacks.
 - The headless preview in the build workspace used mock data. No real model, database or capture has run yet.
 
 ## Decisions log
@@ -46,3 +46,6 @@ _Not run on a Mac yet._
 - 2026-10-10: reopening the panel shows ideas unless an answer is still streaming.
 - 2026-10-10: Graphify is installed with Homebrew + pipx (`brew install pipx && pipx install graphifyy`), not uv. Klair finds `graphify` in ~/.local/bin, /opt/homebrew/bin, /usr/local/bin or the login shell's PATH; GRAPHIFY_BIN is optional.
 - 2026-10-10: `KLAIR_BASELINE=full` swaps retrieval for all session notes, for token comparisons (`userData/metrics.jsonl`).
+- 2026-10-10: `pnpm app` copies `.env.local` / `.env` into `~/Library/Application Support/Klair` (`scripts/copy-env.sh`). A symlink into ~/Downloads made macOS block Klair's startup on a folder-access prompt.
+- 2026-10-10: the fn health check retries the event tap, and the Allow button sends the Input Monitoring request; only that request makes Klair appear in System Settings.
+- 2026-10-10: a second launch exits with `app.exit(0)` and focuses the Start window of the running Klair.

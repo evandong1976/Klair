@@ -7,6 +7,7 @@ import {
 } from '../shared/types'
 import * as c from './controller'
 import { listSessions } from './db'
+import { retryFnKey } from './fnkey'
 import { lastHealth, runHealth } from './health'
 import { setToggleKey } from './shortcuts'
 import { getState } from './state'
@@ -64,6 +65,9 @@ const handlers: Handlers = {
         .getSources({ types: ['screen'], thumbnailSize: { width: 1, height: 1 } })
         .catch(() => [])
     }
+    // Same for Input Monitoring: only the addon's request (CGRequestListenEventAccess)
+    // gets Klair listed there.
+    if (pane === 'input-monitoring') retryFnKey()
     const url = SETTINGS_URLS[pane]
     if (url) await shell.openExternal(url)
   },
