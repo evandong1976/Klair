@@ -1,5 +1,5 @@
 import { generateText } from 'ai'
-import { systemPreferences } from 'electron'
+import { app, systemPreferences } from 'electron'
 import type { HealthCheck, HealthReport } from '../shared/types'
 import { fastModel } from './ai'
 import { cache } from './cache'
@@ -96,13 +96,34 @@ async function checkTigerData(): Promise<HealthCheck> {
   }
 }
 
+// Run from a terminal (pnpm dev), macOS files privacy grants under the app that owns
+// the terminal, not Klair. macOS sets __CFBundleIdentifier for processes it launches.
+const HOSTS: Record<string, string> = {
+  'com.microsoft.VSCode': 'Visual Studio Code',
+  'com.todesktop.230313mzl4w4u92': 'Cursor',
+  'com.apple.Terminal': 'Terminal',
+  'com.googlecode.iterm2': 'iTerm',
+  'dev.warp.Warp-Stable': 'Warp',
+  'com.mitchellh.ghostty': 'Ghostty',
+  'com.anthropic.claudefordesktop': 'Claude'
+}
+
+function devHost(): string {
+  const id = process.env['__CFBundleIdentifier'] ?? ''
+  return HOSTS[id] ?? (id && id !== 'com.github.Electron' ? id : 'your terminal app')
+}
+
 function checkScreen(): HealthCheck {
   const base = { id: 'screen' as const, label: 'Screen recording' }
   if (process.platform !== 'darwin') return { ...base, status: 'ok', detail: 'Not required here' }
-  const s = systemPreferences.getMediaAccessStatus('screen')
-  return s === 'granted'
-    ? { ...base, status: 'ok', detail: 'Allowed' }
-    : { ...base, status: 'fail', detail: 'Needed before Klair can see anything' }
+  if (systemPreferences.getMediaAccessStatus('screen') === 'granted') {
+    return { ...base, status: 'ok', detail: 'Allowed' }
+  }
+  // macOS only applies a new grant once the app it belongs to restarts.
+  const detail = app.isPackaged
+    ? 'Allow Klair, then quit and reopen Klair. Until it restarts, macOS keeps saying no.'
+    : `In pnpm dev, macOS asks on behalf of ${devHost()}. Allow it, then quit ${devHost()} (⌘Q) and run pnpm dev again.`
+  return { ...base, status: 'fail', detail }
 }
 
 function checkFn(): HealthCheck {

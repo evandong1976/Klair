@@ -49,3 +49,4 @@
 - 2026-10-10: `pnpm app` copies `.env.local` / `.env` into `~/Library/Application Support/Klair` (`scripts/copy-env.sh`). A symlink into ~/Downloads made macOS block Klair's startup on a folder-access prompt.
 - 2026-10-10: the fn health check retries the event tap, and the Allow button sends the Input Monitoring request; only that request makes Klair appear in System Settings.
 - 2026-10-10: a second launch exits with `app.exit(0)` and focuses the Start window of the running Klair.
+- 2026-10-10: the Screen recording row says which app macOS files the grant under (in `pnpm dev`, the terminal's host app, e.g. Visual Studio Code) and that it must be quit and reopened; macOS ignores a new grant until then.
