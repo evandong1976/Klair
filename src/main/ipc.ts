@@ -1,0 +1,71 @@
+import { ipcMain, shell } from 'electron'
+import {
+  invokeChannel,
+  type KlairApi,
+  type KlairInvokeMethod,
+  type SettingsPane
+} from '../shared/types'
+import * as c from './controller'
+import { listSessions } from './db'
+import { lastHealth, runHealth } from './health'
+import { getState } from './state'
+import * as windows from './windows'
+
+// The narrow, typed bridge between the renderer and the background controller.
+// The renderer only sends intents; validation and all privileged work happen here.
+
+type Handlers = {
+  [K in KlairInvokeMethod]: (
+    ...args: Parameters<KlairApi[K]>
+  ) => ReturnType<KlairApi[K]> | Awaited<ReturnType<KlairApi[K]>>
+}
+
+const SETTINGS_URLS: Record<SettingsPane, string> = {
+  screen: 'x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture',
+  'input-monitoring': 'x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent',
+  keyboard: 'x-apple.systempreferences:com.apple.preference.keyboard',
+  privacy: 'x-apple.systempreferences:com.apple.preference.security'
+}
+
+const handlers: Handlers = {
+  getState: async () => getState(),
+  openPanel: async () => c.openPanel(),
+  closePanel: async () => c.closePanel(),
+  showShortcuts: async () => c.showShortcuts(),
+  backToIdeas: async () => c.backToIdeas(),
+  pickKey: async (key) => c.pickKey(Number(key)),
+  ask: (text) => c.ask(String(text)),
+  reshape: (text) => c.reshape(String(text)),
+  cancel: async () => c.cancelExecution(),
+  retry: () => c.retry(),
+  dismissNotice: async () => c.dismissNotice(),
+  dismissIdeas: async () => c.dismissIdeas(),
+  setPanelSize: async (w, h) => windows.resizePanel(Number(w), Number(h)),
+  setFlowerInteractive: async (on) => windows.setFlowerInteractive(Boolean(on)),
+  startSession: (name) => c.startSession(String(name)),
+  pause: () => c.pause(),
+  resume: () => c.resume(),
+  endSession: () => c.endSession(),
+  deleteSession: (id) => c.deleteSession(Number(id)),
+  listSessions: () => listSessions().catch(() => []),
+  getSessionDetail: (id) => c.sessionDetail(Number(id)).catch(() => null),
+  setDwellMs: async (ms) => c.setDwellMs(Math.max(10_000, Number(ms))),
+  setQuiet: async (on) => c.setQuiet(Boolean(on)),
+  getHealth: async () => lastHealth() ?? runHealth(),
+  runHealth: () => runHealth(),
+  openSettings: async (pane) => {
+    const url = SETTINGS_URLS[pane]
+    if (url) await shell.openExternal(url)
+  },
+  openWindow: async (name) => (name === 'sessions' ? windows.openSessions() : windows.openStart()),
+  openShot: (id) => c.shotDataUrl(Number(id))
+}
+
+export function registerIpc(): void {
+  for (const [name, fn] of Object.entries(handlers) as [
+    KlairInvokeMethod,
+    (...a: unknown[]) => unknown
+  ][]) {
+    ipcMain.handle(invokeChannel(name), (_e, ...args) => fn(...args))
+  }
+}

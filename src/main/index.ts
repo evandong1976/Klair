@@ -1,79 +1,73 @@
 import './env'
-import { app, shell, BrowserWindow } from 'electron'
-import { join } from 'path'
-import { electronApp, optimizer, is } from '@electron-toolkit/utils'
-import icon from '../../resources/icon.png?asset'
-import { migrate } from './db'
-import './cache'
-import './graphify'
-import './ai'
+import { app, BrowserWindow } from 'electron'
+import { electronApp, optimizer } from '@electron-toolkit/utils'
+import * as c from './controller'
+import { getPool } from './db'
+import { runHealth } from './health'
+import { registerIpc } from './ipc'
+import { registerShortcuts, unregisterShortcuts } from './shortcuts'
+import { getState, onStateChange, setState } from './state'
+import { createTray, setTrayPaused } from './tray'
+import * as windows from './windows'
 
-function createWindow(): void {
-  // Create the browser window.
-  const mainWindow = new BrowserWindow({
-    width: 900,
-    height: 670,
-    show: false,
-    autoHideMenuBar: true,
-    ...(process.platform === 'linux' ? { icon } : {}),
-    webPreferences: {
-      preload: join(__dirname, '../preload/index.js'),
-      sandbox: false
-    }
-  })
+// Klair runs in the background: a flower in the top-right corner, a panel on fn,
+// and a menu bar icon. There is no main window.
 
-  mainWindow.on('ready-to-show', () => {
-    mainWindow.show()
-  })
+if (!app.requestSingleInstanceLock()) app.quit()
 
-  mainWindow.webContents.setWindowOpenHandler((details) => {
-    shell.openExternal(details.url)
-    return { action: 'deny' }
-  })
+app.whenReady().then(async () => {
+  electronApp.setAppUserModelId('com.klair.app')
+  if (process.platform === 'darwin') app.dock?.hide()
 
-  // HMR for renderer base on electron-vite cli.
-  // Load the remote URL for development or the local html file for production.
-  if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
-    mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])
-  } else {
-    mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
-  }
-}
-
-// This method will be called when Electron has finished
-// initialization and is ready to create browser windows.
-// Some APIs can only be used after this event occurs.
-app.whenReady().then(() => {
-  // Set app user model id for windows
-  electronApp.setAppUserModelId('com.electron')
-
-  // Default open or close DevTools by F12 in development
-  // and ignore CommandOrControl + R in production.
-  // see https://github.com/alex8088/electron-toolkit/tree/master/packages/utils
+  // F12 devtools in dev for app windows. Not for the panel: it handles its own ⌘ keys (⌘R etc.).
   app.on('browser-window-created', (_, window) => {
-    optimizer.watchWindowShortcuts(window)
+    window.webContents.once('did-finish-load', () => {
+      if (!window.webContents.getURL().includes('#/panel')) optimizer.watchWindowShortcuts(window)
+    })
   })
 
-  if (process.env.DATABASE_URL) migrate().catch((err) => console.error('db migrate failed:', err))
-  else console.warn('DATABASE_URL not set; session persistence disabled')
+  registerIpc()
+  windows.createFlowerWindow()
+  windows.createPanelWindow()
 
-  createWindow()
-
-  app.on('activate', function () {
-    // On macOS it's common to re-create a window in the app when the
-    // dock icon is clicked and there are no other windows open.
-    if (BrowserWindow.getAllWindows().length === 0) createWindow()
+  createTray({
+    onClick: (bounds) => windows.toggleTrayWindow(bounds),
+    onOpen: () => c.openPanel(),
+    onTogglePause: () => void c.togglePause(),
+    onSessions: () => windows.openSessions(),
+    onQuit: () => app.quit()
   })
-})
+  onStateChange((s) => setTrayPaused(s.flower === 'paused' || s.flower === 'off'))
 
-// Quit when all windows are closed, except on macOS. There, it's common
-// for applications and their menu bar to stay active until the user quits
-// explicitly with Cmd + Q.
-app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
-    app.quit()
+  const keys = registerShortcuts({
+    toggle: () => c.togglePanel(),
+    pause: () => void c.togglePause(),
+    quiet: () => c.toggleQuiet()
+  })
+  if (!keys.fn && !keys.fallback.toggle) {
+    setState({ notice: { kind: 'fn-busy', detail: 'Neither fn nor ⌃⌥K could be registered' } })
   }
+
+  windows.openStart()
+
+  const health = await runHealth()
+  console.log('klair health:', health.checks.map((ch) => `${ch.id}=${ch.status}`).join(' '))
+  if (health.checks.find((ch) => ch.id === 'tigerdata')?.status !== 'fail' && getPool()) {
+    await c.reconcileLocal()
+    await c.retentionSweep()
+    setInterval(() => void c.retentionSweep(), 60 * 60_000)
+  } else if (!getState().session) {
+    setState({ saving: false })
+  }
+
+  app.on('activate', () => {
+    if (BrowserWindow.getAllWindows().length === 0) windows.createFlowerWindow()
+  })
 })
 
-// In this file you can include the rest of your app's specific main process
-// code. You can also put them in separate files and require them here.
+app.on('will-quit', () => {
+  unregisterShortcuts()
+})
+
+// Klair lives in the menu bar; closing its windows doesn't quit it.
+app.on('window-all-closed', () => {})

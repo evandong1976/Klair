@@ -1,22 +1,29 @@
-import { contextBridge } from 'electron'
-import { electronAPI } from '@electron-toolkit/preload'
+import { contextBridge, ipcRenderer } from 'electron'
+import {
+  KLAIR_INVOKE_METHODS,
+  STATE_CHANNEL,
+  invokeChannel,
+  type KlairApi,
+  type KlairState
+} from '../shared/types'
 
-// Custom APIs for renderer
-const api = {}
+// Narrow, typed API for the renderer. No Node, no keys, no direct IPC access.
+const api = Object.fromEntries(
+  KLAIR_INVOKE_METHODS.map((m) => [
+    m,
+    (...args: unknown[]) => ipcRenderer.invoke(invokeChannel(m), ...args)
+  ])
+) as unknown as KlairApi
 
-// Use `contextBridge` APIs to expose Electron APIs to
-// renderer only if context isolation is enabled, otherwise
-// just add to the DOM global.
+api.onState = (cb: (s: KlairState) => void) => {
+  const listener = (_: unknown, s: KlairState): void => cb(s)
+  ipcRenderer.on(STATE_CHANNEL, listener)
+  return () => ipcRenderer.removeListener(STATE_CHANNEL, listener)
+}
+
 if (process.contextIsolated) {
-  try {
-    contextBridge.exposeInMainWorld('electron', electronAPI)
-    contextBridge.exposeInMainWorld('api', api)
-  } catch (error) {
-    console.error(error)
-  }
+  contextBridge.exposeInMainWorld('klair', api)
 } else {
-  // @ts-ignore (define in dts)
-  window.electron = electronAPI
-  // @ts-ignore (define in dts)
-  window.api = api
+  // @ts-ignore (declared in index.d.ts)
+  window.klair = api
 }
