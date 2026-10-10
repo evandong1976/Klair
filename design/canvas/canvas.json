@@ -1,0 +1,146 @@
+{
+  "v": 3,
+  "attachments": {},
+  "boards": {
+    "Backdrop.dc.html": {
+      "h": 900,
+      "title": "Shared · Work behind the overlay",
+      "w": 1440,
+      "x": 6080,
+      "y": 0
+    },
+    "Flower.dc.html": {
+      "h": 240,
+      "title": "Flower component",
+      "w": 240,
+      "x": 1040,
+      "y": 1300
+    },
+    "Indicator.dc.html": {
+      "h": 600,
+      "is_interactive": true,
+      "title": "The flower · tap fn to bloom",
+      "w": 960,
+      "x": 0,
+      "y": 1300
+    },
+    "Main.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "title": "1 · Resting, ideas ready",
+      "w": 1440,
+      "x": 0,
+      "y": 0
+    },
+    "Open.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "title": "2 · Tap fn — Klair opens",
+      "w": 1440,
+      "x": 1520,
+      "y": 0
+    },
+    "Quiz.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "title": "4 · Quiz in place",
+      "w": 1440,
+      "x": 4560,
+      "y": 0
+    },
+    "Result.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "title": "3 · An answer you can play with",
+      "w": 1440,
+      "x": 3040,
+      "y": 0
+    },
+    "Sessions.dc.html": {
+      "expand": "fill",
+      "h": 860,
+      "title": "7 · Sessions window",
+      "w": 1280,
+      "x": 1100,
+      "y": 2320
+    },
+    "Shortcuts.dc.html": {
+      "h": 900,
+      "title": "⌘/ · Every shortcut",
+      "w": 1440,
+      "x": 1360,
+      "y": 1300
+    },
+    "Start.dc.html": {
+      "h": 720,
+      "title": "5 · Start a session",
+      "w": 560,
+      "x": 0,
+      "y": 2320
+    },
+    "States.dc.html": {
+      "h": 1000,
+      "title": "8 · States & recovery",
+      "w": 1440,
+      "x": 2460,
+      "y": 2320
+    },
+    "Tray.dc.html": {
+      "h": 620,
+      "title": "6 · Menu bar control",
+      "w": 380,
+      "x": 640,
+      "y": 2320
+    }
+  },
+  "createdOnFiles": {
+    "at": "2026-10-10T18:16:00Z",
+    "v": 1
+  },
+  "designSystems": [],
+  "launch": {
+    "view": "canvas"
+  },
+  "notes": {
+    "rowA": {
+      "kind": "title1",
+      "maxW": 7520,
+      "text": "In place — help without leaving the page",
+      "w": 240,
+      "x": 0,
+      "y": -300
+    },
+    "rowB": {
+      "kind": "title1",
+      "maxW": 3900,
+      "text": "Around the session — control, history, recovery",
+      "w": 240,
+      "x": 0,
+      "y": 2020
+    },
+    "rowF": {
+      "kind": "title1",
+      "maxW": 2800,
+      "text": "The flower & every shortcut",
+      "w": 240,
+      "x": 0,
+      "y": 1000
+    }
+  },
+  "order": [
+    "Main.dc.html",
+    "Open.dc.html",
+    "Result.dc.html",
+    "Quiz.dc.html",
+    "Backdrop.dc.html",
+    "Indicator.dc.html",
+    "Flower.dc.html",
+    "Shortcuts.dc.html",
+    "Start.dc.html",
+    "Tray.dc.html",
+    "Sessions.dc.html",
+    "States.dc.html"
+  ],
+  "pages": [],
+  "title": "Klair"
+}

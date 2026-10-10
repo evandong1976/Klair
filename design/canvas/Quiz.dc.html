@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Klair — quiz in place</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800&amp;family=Geist+Mono:wght@400;500&amp;family=Silkscreen&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#A8463D}a:hover{color:#7E2F28}
+.opt{transition:background .12s ease,border-color .12s ease}
+.opt:hover{background:#FFF7F6}
+.opt:focus-visible{outline:2px solid #EE8378;outline-offset:2px}
+</style>
+</helmet>
+<div style="width: 1440px; height: 900px; position: relative; overflow: hidden; font-family: Nunito, -apple-system, 'Helvetica Neue', sans-serif; color: #2D3128">
+  <div style="position: absolute; inset: 0">
+    <dc-import name="Backdrop" hint-size="1440px,900px"></dc-import>
+  </div>
+
+  <div style="position: absolute; top: 10px; right: 14px; bottom: 12px; width: 490px; display: flex; flex-direction: column; align-items: flex-end; gap: 6px">
+    <div style="flex: none; filter: drop-shadow(0 2px 2px rgba(90,60,55,0.25))">
+      <dc-import name="Flower" res="30" cell="3" label="Klair is open" hint-size="90px,90px"></dc-import>
+    </div>
+
+    <section aria-label="Klair quiz" style="flex: 1; width: 100%; box-sizing: border-box; border-radius: 26px; padding: 18px 20px; display: flex; flex-direction: column; gap: 18px; overflow: hidden; background: linear-gradient(180deg, rgba(255,255,255,0.64), rgba(255,244,242,0.46)); backdrop-filter: blur(36px) saturate(170%); -webkit-backdrop-filter: blur(36px) saturate(170%); border: 1px solid rgba(255,255,255,0.75); box-shadow: inset 0 1px 0 rgba(255,255,255,0.95), inset 0 0 0 6px rgba(255,255,255,0.14), 0 30px 70px rgba(90,60,55,0.22), 0 2px 6px rgba(90,60,55,0.08)">
+      <header style="display: flex; flex-direction: column; gap: 12px">
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px">
+          <span style="font-family: Silkscreen, monospace; font-size: 11px; color: #46522F">Quiz · 1 of 3</span>
+          <button aria-label="Close quiz" style="height: 36px; padding: 0 8px 0 10px; border-radius: 12px; border: 1px solid #EADCD9; background: #FFFFFF; color: #2D3128; display: flex; align-items: center; gap: 8px; cursor: pointer">
+            <svg width="11" height="11" viewBox="0 0 12 12" aria-hidden="true"><path d="M2 2l8 8M10 2l-8 8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"></path></svg>
+            <kbd style="font: 700 10.5px Nunito, -apple-system, sans-serif; line-height: 1; padding: 4px 6px; border-radius: 5px; background: #FBF7F5; border: 1px solid #E2D3D0; color: #2D3128">esc</kbd>
+          </button>
+        </div>
+        <div aria-hidden="true" style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px">
+          <span style="height: 6px; background: #EE8378"></span>
+          <span style="height: 6px; background: rgba(255,255,255,0.8)"></span>
+          <span style="height: 6px; background: rgba(255,255,255,0.8)"></span>
+        </div>
+      </header>
+
+      <div style="display: flex; flex-direction: column; gap: 8px">
+        <span style="font-size: 13px; font-weight: 600; color: #4B5044">From the Learning rate section</span>
+        <h1 style="margin: 0; font-size: 22px; line-height: 1.35; font-weight: 800; text-wrap: pretty">In the update rule, what does the learning rate η control?</h1>
+      </div>
+
+      <div role="group" aria-label="Answers" style="display: flex; flex-direction: column; gap: 8px">
+        <sc-for list="{{options}}" as="o" hint-placeholder-count="4">
+          <button class="opt" onClick="{{o.pick}}" style="display: flex; align-items: center; gap: 12px; min-height: 54px; padding: 10px 14px; border-radius: 16px; border: 1.5px solid {{o.border}}; background: {{o.bg}}; color: #2D3128; text-align: left; font: 600 15px Nunito, -apple-system, sans-serif; cursor: pointer">
+            <kbd style="flex: none; font: 700 12px Nunito, -apple-system, sans-serif; line-height: 1; padding: 6px 8px; border-radius: 6px; background: #FFFFFF; border: 1px solid #E2D3D0; box-shadow: 0 2px 0 #E2D3D0; color: #2D3128">{{o.key}}</kbd>
+            <span style="flex: 1">{{o.text}}</span>
+            <span style="font-size: 12.5px; font-weight: 700; color: {{o.tagColor}}">{{o.tag}}</span>
+          </button>
+        </sc-for>
+      </div>
+
+      <sc-if value="{{answered}}" hint-placeholder-val="{{false}}">
+        <div style="padding: 14px 16px; border-radius: 16px; background: #FFFFFF; display: flex; flex-direction: column; gap: 6px">
+          <span style="font-size: 14.5px; font-weight: 800; color: #3F4A2C">{{verdict}}</span>
+          <span style="font-size: 14px; line-height: 1.5; color: #3F4538">η scales every step. Too small and progress is slow; too large and the steps overshoot the minimum and can diverge.</span>
+        </div>
+      </sc-if>
+
+      <footer style="margin-top: auto; display: flex; align-items: center; justify-content: flex-end; gap: 8px">
+        <button onClick="{{reset}}" style="height: 40px; padding: 0 8px 0 14px; border-radius: 12px; border: 1px solid #EADCD9; background: #FFFFFF; color: #2D3128; font: 600 13.5px Nunito, -apple-system, sans-serif; display: flex; align-items: center; gap: 8px; cursor: pointer">Start over <kbd style="font: 700 10.5px Nunito, -apple-system, sans-serif; line-height: 1; padding: 4px 6px; border-radius: 5px; background: #FBF7F5; border: 1px solid #E2D3D0; color: #2D3128">⌘R</kbd></button>
+        <button style="height: 40px; padding: 0 8px 0 16px; border-radius: 12px; border: 0; background: #2D3128; color: #FFFCFB; font: 700 13.5px Nunito, -apple-system, sans-serif; display: flex; align-items: center; gap: 8px; cursor: pointer">Next question <kbd style="font: 700 10.5px Nunito, -apple-system, sans-serif; line-height: 1; padding: 4px 6px; border-radius: 5px; background: #4A4F43; border: 1px solid #5C6254; color: #FFFCFB">⌘↵</kbd></button>
+      </footer>
+    </section>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { picked: null };
+  }
+  renderVals() {
+    const picked = this.state.picked;
+    const correct = 'a';
+    const raw = [
+      { id: 'a', key: '⌘1', text: 'How far each step moves' },
+      { id: 'b', key: '⌘2', text: 'Which direction counts as downhill' },
+      { id: 'c', key: '⌘3', text: 'How many steps the loop runs' },
+      { id: 'd', key: '⌘4', text: 'Where the starting guess is' }
+    ];
+    const options = raw.map((o) => {
+      let border = '#F3E6E3', bg = '#FFFFFF', tag = '', tagColor = '#686D60';
+      if (picked) {
+        if (o.id === correct) { border = '#56623F'; bg = '#F4F6EE'; tag = 'Correct answer'; tagColor = '#3F4A2C'; }
+        else if (o.id === picked) { border = '#E8A39B'; bg = '#FFF5F4'; tag = 'Your pick'; tagColor = '#A8463D'; }
+      }
+      return { ...o, border, bg, tag, tagColor, pick: () => this.setState({ picked: o.id }) };
+    });
+    const right = picked === correct;
+    return {
+      options,
+      answered: !!picked,
+      verdict: right ? 'Right — it sets the step size.' : 'Not quite — it sets the step size.',
+      reset: () => this.setState({ picked: null })
+    };
+  }
+}
+</script>
+</body>
+</html>

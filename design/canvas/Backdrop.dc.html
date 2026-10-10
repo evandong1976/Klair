@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Work behind the overlay</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&amp;family=Geist+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div style="width: 1440px; height: 900px; background: #D8DECF; position: relative; overflow: hidden; font-family: Geist, -apple-system, 'Helvetica Neue', sans-serif; color: #1D1D1F">
+  <div style="position: absolute; left: 40px; top: 40px; width: 1360px; height: 820px; border-radius: 12px; background: #FFFFFF; overflow: hidden; box-shadow: 0 30px 80px rgba(60,70,50,0.18); display: flex; flex-direction: column">
+    <div style="height: 40px; background: #ECEBE7; display: flex; align-items: flex-end; gap: 6px; padding: 0 12px; flex: none">
+      <div aria-hidden="true" style="display: flex; gap: 8px; align-self: center; margin-right: 12px">
+        <span style="width: 12px; height: 12px; border-radius: 6px; background: #D7D5CF"></span>
+        <span style="width: 12px; height: 12px; border-radius: 6px; background: #D7D5CF"></span>
+        <span style="width: 12px; height: 12px; border-radius: 6px; background: #D7D5CF"></span>
+      </div>
+      <div style="height: 32px; width: 220px; border-radius: 8px 8px 0 0; background: #F6F5F2; display: flex; align-items: center; padding: 0 12px; font-size: 12.5px; color: #55544F">Machine learning</div>
+      <div style="height: 32px; width: 220px; border-radius: 8px 8px 0 0; background: #FFFFFF; display: flex; align-items: center; padding: 0 12px; font-size: 12.5px; color: #1D1D1F">Gradient descent</div>
+    </div>
+    <div style="height: 44px; display: flex; align-items: center; padding: 0 16px; border-bottom: 1px solid #ECEBE7; flex: none">
+      <div style="flex: 1; height: 28px; border-radius: 14px; background: #F3F2EF; display: flex; align-items: center; padding: 0 14px; font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12px; color: #6A6964">encyclopedia.example/wiki/Gradient_descent</div>
+    </div>
+    <div style="flex: 1; display: flex; gap: 56px; padding: 40px 72px; overflow: hidden">
+      <aside style="width: 200px; flex: none; display: flex; flex-direction: column; gap: 10px; font-size: 13px; color: #6A6964; padding-top: 70px">
+        <span style="font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: #8A8984">Contents</span>
+        <span>Description</span>
+        <span style="color: #1D1D1F; font-weight: 500">Learning rate</span>
+        <span>Convergence</span>
+        <span>Stochastic variants</span>
+        <span>Applications</span>
+      </aside>
+      <article style="max-width: 720px; display: flex; flex-direction: column; gap: 18px; font-family: Georgia, 'Times New Roman', serif; font-size: 17px; line-height: 1.6; color: #2A2A2C">
+        <h1 style="margin: 0; font-family: Georgia, 'Times New Roman', serif; font-weight: 400; font-size: 38px; color: #1D1D1F; border-bottom: 1px solid #E4E3DF; padding-bottom: 12px">Gradient descent</h1>
+        <p style="margin: 0">Gradient descent is an iterative method for finding a minimum of a differentiable function. Starting from an initial guess, it repeatedly steps in the direction opposite the gradient — the direction in which the function decreases fastest.</p>
+        <h2 style="margin: 8px 0 0 0; font-family: Georgia, 'Times New Roman', serif; font-weight: 400; font-size: 26px; color: #1D1D1F">Learning rate</h2>
+        <p style="margin: 0">The size of each step is set by a parameter called the learning rate, often written η. A rate that is too small makes progress slow; one that is too large can overshoot the minimum and cause the iterates to diverge.</p>
+        <div style="font-family: 'Geist Mono', ui-monospace, monospace; font-size: 16px; padding: 14px 20px; background: #F6F5F2; border-radius: 6px; color: #1D1D1F">x<sub>n+1</sub> = x<sub>n</sub> − η ∇f(x<sub>n</sub>)</div>
+        <p style="margin: 0">In machine learning, the function being minimized is usually a loss measured over training data. Variants such as stochastic gradient descent estimate the gradient from small batches of examples rather than the full dataset.</p>
+        <h2 style="margin: 8px 0 0 0; font-family: Georgia, 'Times New Roman', serif; font-weight: 400; font-size: 26px; color: #1D1D1F">Convergence</h2>
+        <p style="margin: 0">For convex functions with a suitably chosen step size, gradient descent converges to the global minimum. For non-convex functions it may settle in a local minimum or a saddle point.</p>
+      </article>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>

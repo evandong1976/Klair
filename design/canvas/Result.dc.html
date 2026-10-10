@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Klair — answer that reshapes</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800&amp;family=Geist+Mono:wght@400;500&amp;family=Silkscreen&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#A8463D}a:hover{color:#7E2F28}
+input[type=range]{accent-color:#EE8378}
+.chip:hover{background:#FCE4E2}
+</style>
+</helmet>
+<div style="width: 1440px; height: 900px; position: relative; overflow: hidden; font-family: Nunito, -apple-system, 'Helvetica Neue', sans-serif; color: #2D3128">
+  <div style="position: absolute; inset: 0">
+    <dc-import name="Backdrop" hint-size="1440px,900px"></dc-import>
+  </div>
+
+  <div style="position: absolute; top: 10px; right: 14px; bottom: 12px; width: 572px; display: flex; flex-direction: column; align-items: flex-end; gap: 6px">
+    <div style="flex: none; filter: drop-shadow(0 2px 2px rgba(90,60,55,0.25))">
+      <dc-import name="Flower" res="30" cell="3" label="Klair is open" hint-size="90px,90px"></dc-import>
+    </div>
+
+    <section aria-label="Klair answer" style="flex: 1; width: 100%; box-sizing: border-box; border-radius: 26px; padding: 18px 20px; display: flex; flex-direction: column; gap: 12px; overflow: hidden; background: linear-gradient(180deg, rgba(255,255,255,0.64), rgba(255,244,242,0.46)); backdrop-filter: blur(36px) saturate(170%); -webkit-backdrop-filter: blur(36px) saturate(170%); border: 1px solid rgba(255,255,255,0.75); box-shadow: inset 0 1px 0 rgba(255,255,255,0.95), inset 0 0 0 6px rgba(255,255,255,0.14), 0 30px 70px rgba(90,60,55,0.22), 0 2px 6px rgba(90,60,55,0.08)">
+      <header style="display: flex; align-items: flex-start; justify-content: space-between; gap: 12px">
+        <div style="display: flex; flex-direction: column; gap: 4px">
+          <span style="font-family: Silkscreen, monospace; font-size: 11px; color: #46522F">You picked ⌘2</span>
+          <h1 style="margin: 0; font-size: 20px; font-weight: 800">Gradient descent, hands-on</h1>
+          <span style="font-size: 13px; color: #4B5044">Built from the Learning rate section and your Machine learning tab</span>
+        </div>
+        <div style="flex: none; display: flex; gap: 6px">
+          <button style="height: 36px; padding: 0 8px 0 12px; border-radius: 12px; border: 1px solid #EADCD9; background: #FFFFFF; color: #2D3128; font: 600 13px Nunito, -apple-system, sans-serif; display: flex; align-items: center; gap: 8px; cursor: pointer">Ideas <kbd style="font: 700 10.5px Nunito, -apple-system, sans-serif; line-height: 1; padding: 4px 6px; border-radius: 5px; background: #FBF7F5; border: 1px solid #E2D3D0; color: #2D3128">⌘[</kbd></button>
+          <button aria-label="Close" style="height: 36px; padding: 0 8px 0 10px; border-radius: 12px; border: 1px solid #EADCD9; background: #FFFFFF; color: #2D3128; display: flex; align-items: center; gap: 8px; cursor: pointer">
+            <svg width="11" height="11" viewBox="0 0 12 12" aria-hidden="true"><path d="M2 2l8 8M10 2l-8 8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"></path></svg>
+            <kbd style="font: 700 10.5px Nunito, -apple-system, sans-serif; line-height: 1; padding: 4px 6px; border-radius: 5px; background: #FBF7F5; border: 1px solid #E2D3D0; color: #2D3128">esc</kbd>
+          </button>
+        </div>
+      </header>
+
+      <div style="border-radius: 18px; background: #FFFFFF; border: 1px solid #F3E6E3; padding: 14px 16px; display: flex; flex-direction: column; gap: 10px">
+        <div style="display: flex; align-items: center; gap: 12px">
+          <label for="lr" style="font-size: 14px; font-weight: 700; white-space: nowrap">Step size η</label>
+          <input id="lr" type="range" min="0.05" max="1.05" step="0.05" value="{{lr}}" onChange="{{setLr}}" style="flex: 1">
+          <span style="font-family: 'Geist Mono', ui-monospace, monospace; font-size: 13px; width: 40px; text-align: right">{{lrStr}}</span>
+          <kbd style="font: 700 10.5px Nunito, -apple-system, sans-serif; line-height: 1; padding: 4px 6px; border-radius: 5px; background: #FBF7F5; border: 1px solid #E2D3D0; box-shadow: 0 2px 0 #E2D3D0; color: #2D3128">⌘← →</kbd>
+        </div>
+        <div style="position: relative; width: 480px; height: 150px; align-self: center">
+          <svg width="480" height="150" viewBox="0 0 480 150" aria-hidden="true" style="position: absolute; inset: 0">
+            <line x1="0" y1="144" x2="480" y2="144" stroke="#E6E9DD" stroke-width="2"></line>
+            <line x1="240" y1="4" x2="240" y2="144" stroke="#EEF1E6" stroke-width="2" stroke-dasharray="4 4"></line>
+            <path d="{{curve}}" fill="none" stroke="#9CAA77" stroke-width="2"></path>
+            <polyline points="{{pts}}" fill="none" stroke="#EE8378" stroke-width="1.5" stroke-dasharray="3 3"></polyline>
+          </svg>
+          <sc-for list="{{marks}}" as="m" hint-placeholder-count="0">
+            <span style="position: absolute; left: {{m.left}}px; top: {{m.top}}px; width: {{m.size}}px; height: {{m.size}}px; background: {{m.bg}}; box-shadow: 0 0 0 1px #FFFFFF"></span>
+          </sc-for>
+        </div>
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px">
+          <span style="font-size: 13px; font-weight: 600; color: #3F4538">{{status}}</span>
+          <div style="display: flex; gap: 6px">
+            <sc-for list="{{presets}}" as="p" hint-placeholder-count="3">
+              <button class="chip" onClick="{{p.set}}" style="height: 30px; padding: 0 6px 0 9px; border-radius: 8px; border: 1px solid #EADCD9; background: #FFFFFF; font: 400 12px 'Geist Mono', ui-monospace, monospace; color: #2D3128; display: flex; align-items: center; gap: 6px; cursor: pointer">{{p.label}} <kbd style="font: 700 10px Nunito, -apple-system, sans-serif; line-height: 1; padding: 3px 5px; border-radius: 4px; background: #FBF7F5; border: 1px solid #E2D3D0; color: #4B5044">{{p.key}}</kbd></button>
+            </sc-for>
+          </div>
+        </div>
+      </div>
+
+      <div style="position: relative">
+        <pre style="margin: 0; padding: 12px 16px; border-radius: 16px; background: #F7F5EF; border: 1px solid #ECE8DE; font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12.5px; line-height: 1.65; color: #2D3128; white-space: pre; overflow: hidden"><span style="color: #A8463D">def</span> grad(x): <span style="color: #A8463D">return</span> <span style="color: #46522F">2</span> * (x - <span style="color: #46522F">3</span>)
+
+x, lr = <span style="color: #46522F">0.0</span>, <span style="color: #46522F">{{lrStr}}</span>
+<span style="color: #A8463D">for</span> step <span style="color: #A8463D">in</span> range(<span style="color: #46522F">10</span>):
+    x -= lr * grad(x)      <span style="color: #6E7365"># step downhill</span>
+
+print(round(x, <span style="color: #46522F">2</span>))        <span style="color: #6E7365"># {{xOut}}</span></pre>
+        <button style="position: absolute; top: 10px; right: 10px; height: 30px; padding: 0 6px 0 10px; border-radius: 8px; border: 1px solid #E4DFD3; background: #FFFFFF; font: 600 12px Nunito, -apple-system, sans-serif; color: #2D3128; display: flex; align-items: center; gap: 6px; cursor: pointer">Copy <kbd style="font: 700 10px Nunito, -apple-system, sans-serif; line-height: 1; padding: 3px 5px; border-radius: 4px; background: #FBF7F5; border: 1px solid #E2D3D0; color: #4B5044">⌘C</kbd></button>
+      </div>
+
+      <div style="margin-top: auto; display: flex; flex-direction: column; gap: 10px">
+        <div style="display: flex; flex-wrap: wrap; gap: 6px">
+          <button class="chip" style="height: 32px; padding: 0 6px 0 12px; border-radius: 999px; border: 1px solid #EADCD9; background: #FFFFFF; font: 600 13px Nunito, -apple-system, sans-serif; color: #2D3128; display: flex; align-items: center; gap: 6px; cursor: pointer">Simpler <kbd style="font: 700 10px Nunito, -apple-system, sans-serif; line-height: 1; padding: 3px 5px; border-radius: 999px; background: #FBF7F5; border: 1px solid #E2D3D0; color: #4B5044">⌘⇧1</kbd></button>
+          <button class="chip" style="height: 32px; padding: 0 6px 0 12px; border-radius: 999px; border: 1px solid #EADCD9; background: #FFFFFF; font: 600 13px Nunito, -apple-system, sans-serif; color: #2D3128; display: flex; align-items: center; gap: 6px; cursor: pointer">Show the math <kbd style="font: 700 10px Nunito, -apple-system, sans-serif; line-height: 1; padding: 3px 5px; border-radius: 999px; background: #FBF7F5; border: 1px solid #E2D3D0; color: #4B5044">⌘⇧2</kbd></button>
+          <button class="chip" style="height: 32px; padding: 0 6px 0 12px; border-radius: 999px; border: 1px solid #EADCD9; background: #FFFFFF; font: 600 13px Nunito, -apple-system, sans-serif; color: #2D3128; display: flex; align-items: center; gap: 6px; cursor: pointer">Try a 2-D bowl <kbd style="font: 700 10px Nunito, -apple-system, sans-serif; line-height: 1; padding: 3px 5px; border-radius: 999px; background: #FBF7F5; border: 1px solid #E2D3D0; color: #4B5044">⌘⇧3</kbd></button>
+        </div>
+        <div style="position: relative; display: flex">
+          <input aria-label="Reshape this answer" placeholder="Reshape this… e.g. compare two step sizes" style="flex: 1; height: 46px; box-sizing: border-box; padding: 0 56px 0 14px; border-radius: 14px; border: 1px solid #EADCD9; background: #FFFFFF; font: 500 14.5px Nunito, -apple-system, sans-serif; color: #2D3128">
+          <kbd style="position: absolute; right: 10px; top: 12px; font: 700 11px Nunito, -apple-system, sans-serif; line-height: 1; padding: 5px 7px; border-radius: 6px; background: #FBF7F5; border: 1px solid #E2D3D0; box-shadow: 0 2px 0 #E2D3D0; color: #4B5044">⌘K</kbd>
+        </div>
+      </div>
+    </section>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { lr: 0.1 };
+  }
+  renderVals() {
+    const lr = this.state.lr;
+    const f = (x) => (x - 3) * (x - 3);
+    const W = 480, H = 150;
+    const X = (x) => ((x + 1) / 8) * W;
+    const Y = (y) => H - 6 - (Math.min(y, 16) / 16) * (H - 14);
+    let curve = '';
+    for (let k = 0; k <= 64; k++) {
+      const x = -1 + (8 * k) / 64;
+      curve += (k ? ' L ' : 'M ') + X(x).toFixed(1) + ' ' + Y(f(x)).toFixed(1);
+    }
+    const xs = [0];
+    for (let k = 0; k < 10; k++) {
+      const x = xs[xs.length - 1];
+      xs.push(x - lr * 2 * (x - 3));
+    }
+    const factor = Math.abs(1 - 2 * lr);
+    const bounce = Math.abs(factor - 1) < 1e-9;
+    const diverged = factor > 1 + 1e-9;
+    const shown = xs.map((x) => Math.max(-1, Math.min(7, x)));
+    const pts = shown.map((x) => X(x).toFixed(1) + ',' + Y(f(x)).toFixed(1)).join(' ');
+    const marks = shown.map((x, k) => {
+      const s = k === 10 ? 8 : 6;
+      return { left: (X(x) - s / 2).toFixed(1), top: (Y(f(x)) - s / 2).toFixed(1), size: s, bg: k === 10 ? '#56623F' : '#EE8378' };
+    });
+    const lrStr = lr.toFixed(2);
+    let status;
+    if (diverged) status = 'η = ' + lrStr + ' overshoots — each step lands farther away.';
+    else if (bounce) status = 'η = 1.00 bounces between 0 and 6 forever.';
+    else status = 'After 10 steps, x = ' + xs[10].toFixed(2) + ' (the minimum is 3).';
+    const setTo = (v) => () => this.setState({ lr: v });
+    return {
+      lr: lr,
+      lrStr: lrStr,
+      curve: curve,
+      pts: pts,
+      marks: marks,
+      status: status,
+      xOut: diverged ? 'drifts away' : (bounce ? 'stuck bouncing' : xs[10].toFixed(2)),
+      setLr: (e) => this.setState({ lr: Math.round(parseFloat(e.target.value) * 100) / 100 }),
+      presets: [{ label: '0.10', key: '⌥1', set: setTo(0.1) }, { label: '0.50', key: '⌥2', set: setTo(0.5) }, { label: '1.05', key: '⌥3', set: setTo(1.05) }]
+    };
+  }
+}
+</script>
+</body>
+</html>

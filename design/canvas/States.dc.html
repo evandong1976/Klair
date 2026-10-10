@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Klair — states and recovery</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800&amp;family=Geist+Mono:wght@400;500&amp;family=Silkscreen&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#A8463D}a:hover{color:#7E2F28}
+@keyframes klair-fill{0%{width:8%}100%{width:100%}}
+.glass{background:linear-gradient(180deg,rgba(255,255,255,0.64),rgba(255,244,242,0.46));backdrop-filter:blur(36px) saturate(170%);-webkit-backdrop-filter:blur(36px) saturate(170%);border:1px solid rgba(255,255,255,0.75);box-shadow:inset 0 1px 0 rgba(255,255,255,0.95),inset 0 0 0 6px rgba(255,255,255,0.14),0 24px 50px rgba(90,60,55,0.18)}
+</style>
+</helmet>
+<div style="width: 1440px; height: 1000px; position: relative; overflow: hidden; background: #D8DECF; font-family: Nunito, -apple-system, 'Helvetica Neue', sans-serif; color: #2D3128">
+  <div aria-hidden="true" style="position: absolute; left: 180px; top: 120px">
+    <dc-import name="Flower" res="14" cell="40" hint-size="560px,560px"></dc-import>
+  </div>
+  <div aria-hidden="true" style="position: absolute; right: 60px; top: 380px">
+    <dc-import name="Flower" res="12" cell="40" hint-size="480px,480px"></dc-import>
+  </div>
+
+  <div style="position: relative; box-sizing: border-box; padding: 64px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 48px 48px; align-content: start">
+
+    <div style="display: flex; flex-direction: column; gap: 12px">
+      <span style="font-family: Silkscreen, monospace; font-size: 11px; color: #2F3820">Working on it</span>
+      <div class="glass" style="border-radius: 24px; padding: 18px; display: flex; flex-direction: column; gap: 14px">
+        <span style="font-size: 15.5px; font-weight: 800">Building a live demo…</span>
+        <div aria-hidden="true" style="height: 8px; background: repeating-linear-gradient(90deg, rgba(255,255,255,0.9) 0 8px, transparent 8px 10px); position: relative; overflow: hidden">
+          <span style="position: absolute; left: 0; top: 0; bottom: 0; background: repeating-linear-gradient(90deg, #EE8378 0 8px, transparent 8px 10px); animation: klair-fill 2.4s steps(12) infinite"></span>
+        </div>
+        <span style="font-size: 13px; font-weight: 600; color: #3F4538">Using the Learning rate section and your Machine learning tab</span>
+        <div style="display: flex; justify-content: flex-end">
+          <button style="height: 38px; padding: 0 8px 0 14px; border-radius: 12px; border: 1px solid #EADCD9; background: #FFFFFF; color: #2D3128; font: 600 13px Nunito, -apple-system, sans-serif; display: flex; align-items: center; gap: 8px; cursor: pointer">Cancel <kbd style="font: 700 10.5px Nunito, -apple-system, sans-serif; line-height: 1; padding: 4px 6px; border-radius: 5px; background: #FBF7F5; border: 1px solid #E2D3D0; color: #2D3128">esc</kbd></button>
+        </div>
+      </div>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 12px">
+      <span style="font-family: Silkscreen, monospace; font-size: 11px; color: #2F3820">No earlier context</span>
+      <div class="glass" style="border-radius: 24px; padding: 18px; display: flex; flex-direction: column; gap: 12px">
+        <span style="font-size: 15.5px; font-weight: 800">Gradient descent, hands-on</span>
+        <span style="font-size: 13.5px; line-height: 1.5; padding: 10px 12px; border-radius: 12px; background: #FFFFFF; color: #3F4538">Earlier tabs couldn't be loaded, so this answer uses only what's on screen now.</span>
+        <div style="display: flex; justify-content: flex-end">
+          <button style="height: 38px; padding: 0 8px 0 14px; border-radius: 12px; border: 1px solid #EADCD9; background: #FFFFFF; color: #2D3128; font: 600 13px Nunito, -apple-system, sans-serif; display: flex; align-items: center; gap: 8px; cursor: pointer">Retry with history <kbd style="font: 700 10.5px Nunito, -apple-system, sans-serif; line-height: 1; padding: 4px 6px; border-radius: 5px; background: #FBF7F5; border: 1px solid #E2D3D0; color: #2D3128">⌘R</kbd></button>
+        </div>
+      </div>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 12px">
+      <span style="font-family: Silkscreen, monospace; font-size: 11px; color: #2F3820">Request failed</span>
+      <div class="glass" style="border-radius: 24px; padding: 18px; display: flex; flex-direction: column; gap: 12px">
+        <span style="font-size: 15.5px; font-weight: 800">Couldn't finish the quiz</span>
+        <span style="font-size: 13.5px; line-height: 1.5; color: #3F4538">Claude stopped responding after the first question. That part is saved; nothing else was lost.</span>
+        <div style="display: flex; justify-content: flex-end; gap: 8px">
+          <button style="height: 38px; padding: 0 8px 0 14px; border-radius: 12px; border: 1px solid #EADCD9; background: #FFFFFF; color: #2D3128; font: 600 13px Nunito, -apple-system, sans-serif; display: flex; align-items: center; gap: 8px; cursor: pointer">Dismiss <kbd style="font: 700 10.5px Nunito, -apple-system, sans-serif; line-height: 1; padding: 4px 6px; border-radius: 5px; background: #FBF7F5; border: 1px solid #E2D3D0; color: #2D3128">esc</kbd></button>
+          <button style="height: 38px; padding: 0 8px 0 16px; border-radius: 12px; border: 0; background: #2D3128; color: #FFFCFB; font: 700 13px Nunito, -apple-system, sans-serif; display: flex; align-items: center; gap: 8px; cursor: pointer">Retry <kbd style="font: 700 10.5px Nunito, -apple-system, sans-serif; line-height: 1; padding: 4px 6px; border-radius: 5px; background: #4A4F43; border: 1px solid #5C6254; color: #FFFCFB">⌘R</kbd></button>
+        </div>
+      </div>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 12px">
+      <span style="font-family: Silkscreen, monospace; font-size: 11px; color: #2F3820">fn is busy</span>
+      <div class="glass" style="border-radius: 24px; padding: 18px; display: flex; flex-direction: column; gap: 12px">
+        <span style="font-size: 15.5px; font-weight: 800">macOS is using the fn key</span>
+        <span style="font-size: 13.5px; line-height: 1.5; color: #3F4538">It's set to switch input or start dictation. Set "Press fn key to" Do Nothing in Keyboard settings, or give Klair another key.</span>
+        <div style="display: flex; justify-content: flex-end; gap: 8px">
+          <button style="height: 38px; padding: 0 14px; border-radius: 12px; border: 1px solid #EADCD9; background: #FFFFFF; color: #2D3128; font: 600 13px Nunito, -apple-system, sans-serif; cursor: pointer">Use ⌃⌥K instead</button>
+          <button style="height: 38px; padding: 0 8px 0 16px; border-radius: 12px; border: 0; background: #2D3128; color: #FFFCFB; font: 700 13px Nunito, -apple-system, sans-serif; display: flex; align-items: center; gap: 8px; cursor: pointer">Settings <kbd style="font: 700 10.5px Nunito, -apple-system, sans-serif; line-height: 1; padding: 4px 6px; border-radius: 5px; background: #4A4F43; border: 1px solid #5C6254; color: #FFFCFB">⌘,</kbd></button>
+        </div>
+      </div>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 12px">
+      <span style="font-family: Silkscreen, monospace; font-size: 11px; color: #2F3820">Screen access needed</span>
+      <div class="glass" style="border-radius: 24px; padding: 18px; display: flex; flex-direction: column; gap: 12px">
+        <div style="display: flex; align-items: center; gap: 12px">
+          <dc-import name="Flower" res="11" cell="3" paused="true" label="Klair is not observing" hint-size="33px,33px"></dc-import>
+          <span style="font-size: 15.5px; font-weight: 800">Not observing</span>
+        </div>
+        <span style="font-size: 13.5px; line-height: 1.5; color: #3F4538">macOS hasn't let Klair record the screen yet, so it can't see anything. Turn it on in Privacy &amp; Security, then come back.</span>
+        <div style="display: flex; justify-content: flex-end">
+          <button style="height: 38px; padding: 0 8px 0 16px; border-radius: 12px; border: 0; background: #2D3128; color: #FFFCFB; font: 700 13px Nunito, -apple-system, sans-serif; display: flex; align-items: center; gap: 8px; cursor: pointer">Open System Settings <kbd style="font: 700 10.5px Nunito, -apple-system, sans-serif; line-height: 1; padding: 4px 6px; border-radius: 5px; background: #4A4F43; border: 1px solid #5C6254; color: #FFFCFB">⌘↵</kbd></button>
+        </div>
+      </div>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 12px">
+      <span style="font-family: Silkscreen, monospace; font-size: 11px; color: #2F3820">Not saving</span>
+      <div class="glass" style="border-radius: 24px; padding: 18px; display: flex; flex-direction: column; gap: 12px; outline: 2px solid #E8A39B; outline-offset: -2px">
+        <span style="font-size: 15.5px; font-weight: 800">This session isn't being saved</span>
+        <span style="font-size: 13.5px; line-height: 1.5; color: #3F4538">Your disk is full, so Klair has stopped capturing. Everything up to 2:31 PM is safe.</span>
+        <div style="display: flex; justify-content: flex-end; gap: 8px">
+          <button style="height: 38px; padding: 0 8px 0 14px; border-radius: 12px; border: 1px solid #EADCD9; background: #FFFFFF; color: #2D3128; font: 600 13px Nunito, -apple-system, sans-serif; display: flex; align-items: center; gap: 8px; cursor: pointer">End session <kbd style="font: 700 10.5px Nunito, -apple-system, sans-serif; line-height: 1; padding: 4px 6px; border-radius: 5px; background: #FBF7F5; border: 1px solid #E2D3D0; color: #2D3128">⌘E</kbd></button>
+          <button style="height: 38px; padding: 0 8px 0 16px; border-radius: 12px; border: 0; background: #2D3128; color: #FFFCFB; font: 700 13px Nunito, -apple-system, sans-serif; display: flex; align-items: center; gap: 8px; cursor: pointer">Try again <kbd style="font: 700 10.5px Nunito, -apple-system, sans-serif; line-height: 1; padding: 4px 6px; border-radius: 5px; background: #4A4F43; border: 1px solid #5C6254; color: #FFFCFB">⌘R</kbd></button>
+        </div>
+      </div>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 12px">
+      <span style="font-family: Silkscreen, monospace; font-size: 11px; color: #2F3820">Only part of the page seen</span>
+      <div class="glass" style="border-radius: 24px; padding: 18px; display: flex; flex-direction: column; gap: 12px">
+        <span style="font-size: 15.5px; font-weight: 800">Summary of what's been captured</span>
+        <span style="font-size: 13.5px; line-height: 1.5; color: #3F4538">Covers the intro and Learning rate sections — the rest of the article hasn't been on screen yet.</span>
+        <span style="display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; color: #3F4538">Scroll, then refresh <kbd style="font: 700 10.5px Nunito, -apple-system, sans-serif; line-height: 1; padding: 4px 6px; border-radius: 5px; background: #FFFFFF; border: 1px solid #E2D3D0; box-shadow: 0 2px 0 #E2D3D0; color: #2D3128">⌘R</kbd></span>
+      </div>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 12px">
+      <span style="font-family: Silkscreen, monospace; font-size: 11px; color: #2F3820">Paused</span>
+      <div style="display: flex; align-items: center; gap: 12px">
+        <span class="glass" style="display: flex; align-items: center; gap: 8px; height: 42px; padding: 0 6px 0 16px; border-radius: 999px">
+          <span style="font-size: 14px; font-weight: 700">Paused</span>
+          <button style="height: 30px; padding: 0 6px 0 12px; border-radius: 999px; border: 0; background: #2D3128; color: #FFFCFB; font: 700 12.5px Nunito, -apple-system, sans-serif; display: flex; align-items: center; gap: 6px; cursor: pointer">Resume <span style="font-size: 10.5px; padding: 2px 6px; border-radius: 999px; background: #4A4F43">fn P</span></button>
+        </span>
+        <dc-import name="Flower" res="11" cell="4" paused="true" label="Klair is paused" hint-size="44px,44px"></dc-import>
+      </div>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 12px">
+      <span style="font-family: Silkscreen, monospace; font-size: 11px; color: #2F3820">Ideas went stale</span>
+      <span class="glass" style="display: flex; align-items: center; align-self: flex-start; height: 42px; padding: 0 16px; border-radius: 999px; font-size: 13.5px; font-weight: 600; color: #3F4538">Those ideas were for the last screen</span>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1000}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>

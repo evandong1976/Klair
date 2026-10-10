@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Klair — menu bar control</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800&amp;family=Geist+Mono:wght@400;500&amp;family=Silkscreen&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#A8463D}a:hover{color:#7E2F28}
+</style>
+</helmet>
+<div style="width: 380px; height: 620px; position: relative; overflow: hidden; border-radius: 22px; background: #D8DECF; font-family: Nunito, -apple-system, 'Helvetica Neue', sans-serif; color: #2D3128">
+  <div aria-hidden="true" style="position: absolute; left: -40px; top: 180px">
+    <dc-import name="Flower" res="12" cell="30" hint-size="360px,360px"></dc-import>
+  </div>
+
+  <div style="position: absolute; inset: 0; box-sizing: border-box; border-radius: 22px; display: flex; flex-direction: column; background: linear-gradient(180deg, rgba(255,255,255,0.64), rgba(255,244,242,0.46)); backdrop-filter: blur(36px) saturate(170%); -webkit-backdrop-filter: blur(36px) saturate(170%); border: 1px solid rgba(255,255,255,0.75); box-shadow: inset 0 1px 0 rgba(255,255,255,0.95), inset 0 0 0 6px rgba(255,255,255,0.14)">
+    <header style="padding: 18px 18px 14px 18px; display: flex; flex-direction: column; gap: 12px">
+      <div style="display: flex; align-items: center; gap: 12px">
+        <dc-import name="Flower" res="11" cell="4" hint-size="44px,44px"></dc-import>
+        <div style="flex: 1; display: flex; flex-direction: column; gap: 2px">
+          <span style="font-family: Silkscreen, monospace; font-size: 11px; color: #46522F">Observing · 42:10</span>
+          <span style="font-size: 19px; font-weight: 800">ML study</span>
+        </div>
+      </div>
+      <span style="font-size: 13px; font-weight: 600; color: #4B5044">Started 1:58 PM · 2 tabs · 3 answers</span>
+      <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px">
+        <button style="height: 44px; border-radius: 12px; border: 0; background: #2D3128; color: #FFFCFB; font: 700 14px Nunito, -apple-system, sans-serif; display: flex; align-items: center; justify-content: center; gap: 8px; cursor: pointer">Pause <kbd style="font: 700 10.5px Nunito, -apple-system, sans-serif; line-height: 1; padding: 4px 6px; border-radius: 5px; background: #4A4F43; border: 1px solid #5C6254; color: #FFFCFB">⌘P</kbd></button>
+        <button style="height: 44px; border-radius: 12px; border: 1px solid #EADCD9; background: #FFFFFF; color: #2D3128; font: 600 14px Nunito, -apple-system, sans-serif; display: flex; align-items: center; justify-content: center; gap: 8px; cursor: pointer">End <kbd style="font: 700 10.5px Nunito, -apple-system, sans-serif; line-height: 1; padding: 4px 6px; border-radius: 5px; background: #FBF7F5; border: 1px solid #E2D3D0; color: #2D3128">⌘E</kbd></button>
+      </div>
+    </header>
+
+    <div style="padding: 6px 18px 14px 18px; display: flex; flex-direction: column; gap: 12px">
+      <span style="font-family: Silkscreen, monospace; font-size: 11px; color: #46522F">Ideas</span>
+      <div style="display: flex; flex-direction: column; gap: 8px">
+        <span id="dwell" style="font-size: 14px; font-weight: 600">Offer ideas after I stay on a screen for</span>
+        <div role="radiogroup" aria-labelledby="dwell" style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; padding: 4px; border-radius: 12px; background: rgba(255,255,255,0.55)">
+          <button role="radio" aria-checked="false" style="height: 38px; border-radius: 9px; border: 0; background: transparent; color: #3F4538; font: 600 13px Nunito, -apple-system, sans-serif; display: flex; align-items: center; justify-content: center; gap: 6px; cursor: pointer">30 sec <span style="font-size: 10.5px; color: #686D60">⌘1</span></button>
+          <button role="radio" aria-checked="true" style="height: 38px; border-radius: 9px; border: 0; background: #FFFFFF; box-shadow: 0 1px 3px rgba(110,70,65,0.14); color: #2D3128; font: 700 13px Nunito, -apple-system, sans-serif; display: flex; align-items: center; justify-content: center; gap: 6px; cursor: pointer">1 min <span style="font-size: 10.5px; color: #686D60">⌘2</span></button>
+          <button role="radio" aria-checked="false" style="height: 38px; border-radius: 9px; border: 0; background: transparent; color: #3F4538; font: 600 13px Nunito, -apple-system, sans-serif; display: flex; align-items: center; justify-content: center; gap: 6px; cursor: pointer">2 min <span style="font-size: 10.5px; color: #686D60">⌘3</span></button>
+        </div>
+      </div>
+      <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px">
+        <label for="quiet" style="display: flex; flex-direction: column; gap: 2px">
+          <span style="font-size: 14px; font-weight: 600">Quiet for 30 minutes</span>
+          <span style="font-size: 12.5px; color: #4B5044">fn Q from anywhere</span>
+        </label>
+        <input id="quiet" type="checkbox" role="switch" style="width: 40px; height: 24px; accent-color: #EE8378; margin: 0">
+      </div>
+    </div>
+
+    <div style="padding: 0 18px 14px 18px; display: flex; flex-direction: column; gap: 10px">
+      <span style="font-family: Silkscreen, monospace; font-size: 11px; color: #46522F">Last answer</span>
+      <a href="Result.dc.html" style="display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; padding: 0 12px; border-radius: 12px; background: #FFFFFF; border: 1px solid #F3E2DF; color: #2D3128; text-decoration: none; font-size: 14px; font-weight: 600">
+        Gradient descent, hands-on
+        <kbd style="font: 700 10.5px Nunito, -apple-system, sans-serif; line-height: 1; padding: 4px 6px; border-radius: 5px; background: #FBF7F5; border: 1px solid #E2D3D0; color: #2D3128">⌘L</kbd>
+      </a>
+    </div>
+
+    <footer style="margin-top: auto; padding: 12px 18px 16px 18px; display: flex; flex-direction: column; gap: 10px">
+      <span style="font-size: 12.5px; line-height: 1.45; color: #4B5044">Captures stay on this Mac. Claude sees the relevant ones only to make ideas and answers.</span>
+      <div style="display: flex; justify-content: space-between; gap: 12px; font-size: 13px; font-weight: 700">
+        <a href="Sessions.dc.html" style="display: flex; align-items: center; gap: 6px">All sessions <span style="font-size: 11px; color: #686D60">⌘O</span></a>
+        <a href="#" style="display: flex; align-items: center; gap: 6px; color: #3F4538">Settings <span style="font-size: 11px; color: #686D60">⌘,</span></a>
+      </div>
+    </footer>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":380,"height":620}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Klair — the flower</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800&amp;family=Geist+Mono:wght@400;500&amp;family=Silkscreen&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#A8463D}a:hover{color:#7E2F28}
+@keyframes klair-bob{0%{transform:translateY(0)}50%{transform:translateY(-2px)}}
+.klair-bob{animation:klair-bob 3.2s steps(1) infinite}
+</style>
+</helmet>
+<div style="width: 960px; height: 600px; box-sizing: border-box; background: #FBF7F5; font-family: Nunito, -apple-system, 'Helvetica Neue', sans-serif; color: #2D3128; padding: 40px 48px; display: flex; gap: 40px">
+  <div style="flex: 0 0 520px; display: flex; flex-direction: column; gap: 16px">
+    <div style="position: relative; height: 440px; border-radius: 20px; background: #D8DECF; overflow: hidden">
+      <div style="position: absolute; left: 32px; right: 32px; top: 64px; bottom: -20px; border-radius: 12px; background: #FFFFFF; box-shadow: 0 20px 50px rgba(60,70,50,0.16); padding: 40px; display: flex; flex-direction: column; gap: 12px">
+        <span style="height: 14px; width: 60%; border-radius: 3px; background: #ECEAE5"></span>
+        <span style="height: 10px; width: 90%; border-radius: 3px; background: #F2F1EC"></span>
+        <span style="height: 10px; width: 84%; border-radius: 3px; background: #F2F1EC"></span>
+        <span style="height: 10px; width: 88%; border-radius: 3px; background: #F2F1EC"></span>
+      </div>
+      <div class="klair-bob" style="position: absolute; top: 10px; right: 12px; filter: drop-shadow(0 1px 1px rgba(90,60,55,0.28))">
+        <dc-import name="Flower" res="{{res}}" cell="4" hint-size="44px,44px"></dc-import>
+      </div>
+    </div>
+    <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px">
+      <span style="font-size: 15.5px; font-weight: 700">{{label}}</span>
+      <button onClick="{{toggle}}" style="height: 44px; min-width: 64px; padding: 0 16px; border-radius: 10px; border: 1px solid #E2D3D0; background: #FFFFFF; box-shadow: 0 3px 0 #E2D3D0; font: 800 15px Nunito, -apple-system, sans-serif; color: #2D3128; cursor: pointer">fn</button>
+    </div>
+  </div>
+
+  <div style="flex: 1; display: flex; flex-direction: column; gap: 20px">
+    <div style="display: flex; flex-direction: column; gap: 8px">
+      <span style="font-family: Silkscreen, monospace; font-size: 12px; color: #46522F">Always in the corner</span>
+      <p style="margin: 0; font-size: 15px; line-height: 1.5; color: #3F4538; text-wrap: pretty">A few see-through pixels while Klair watches. Tap fn and it resolves into a full flower — the sign Klair is open and listening for ⌘1, ⌘2 or ⌘3.</p>
+    </div>
+    <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px">
+      <div style="border-radius: 16px; background: #FFFFFF; border: 1px solid #F0E4E1; padding: 16px; display: flex; flex-direction: column; gap: 12px; min-height: 150px; box-sizing: border-box">
+        <div style="height: 90px; display: flex; align-items: center; justify-content: center"><dc-import name="Flower" res="11" cell="4" hint-size="44px,44px"></dc-import></div>
+        <span style="font-size: 13.5px; font-weight: 700">Observing</span>
+      </div>
+      <div style="border-radius: 16px; background: #FFFFFF; border: 1px solid #F0E4E1; padding: 16px; display: flex; flex-direction: column; gap: 12px; min-height: 150px; box-sizing: border-box">
+        <div style="height: 90px; display: flex; align-items: center; justify-content: center; gap: 8px">
+          <span style="font-size: 12.5px; font-weight: 700; padding: 5px 9px; border-radius: 999px; background: #FCE4E2; color: #8E3A32">3 ideas</span>
+          <dc-import name="Flower" res="11" cell="4" hint-size="44px,44px"></dc-import>
+        </div>
+        <span style="font-size: 13.5px; font-weight: 700">Ideas ready</span>
+      </div>
+      <div style="border-radius: 16px; background: #FFFFFF; border: 1px solid #F0E4E1; padding: 16px; display: flex; flex-direction: column; gap: 12px; min-height: 150px; box-sizing: border-box">
+        <div style="height: 90px; display: flex; align-items: center; justify-content: center"><dc-import name="Flower" res="30" cell="3" hint-size="90px,90px"></dc-import></div>
+        <span style="font-size: 13.5px; font-weight: 700">Open (fn)</span>
+      </div>
+      <div style="border-radius: 16px; background: #FFFFFF; border: 1px solid #F0E4E1; padding: 16px; display: flex; flex-direction: column; gap: 12px; min-height: 150px; box-sizing: border-box">
+        <div style="height: 90px; display: flex; align-items: center; justify-content: center"><dc-import name="Flower" res="11" cell="4" paused="true" label="Klair is paused" hint-size="44px,44px"></dc-import></div>
+        <span style="font-size: 13.5px; font-weight: 700">Paused (fn P)</span>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":960,"height":600}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { res: 11 };
+    this.timer = null;
+  }
+  componentWillUnmount() { clearInterval(this.timer); }
+  go(target) {
+    clearInterval(this.timer);
+    this.timer = setInterval(() => {
+      const r = this.state.res;
+      if (r === target) { clearInterval(this.timer); return; }
+      const step = r < target ? Math.min(3, target - r) : -Math.min(3, r - target);
+      this.setState({ res: r + step });
+    }, 55);
+  }
+  renderVals() {
+    const r = this.state.res;
+    const open = r >= 30;
+    return {
+      res: r,
+      label: open ? 'Open — ready for ⌘1, ⌘2 or ⌘3' : (r > 11 ? 'Blooming…' : 'Resting — observing your work'),
+      toggle: () => this.go(this.state.res >= 20 ? 11 : 30)
+    };
+  }
+}
+</script>
+</body>
+</html>

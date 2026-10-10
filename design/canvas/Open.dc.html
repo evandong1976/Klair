@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Klair — open on fn</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800&amp;family=Geist+Mono:wght@400;500&amp;family=Silkscreen&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#2D3128}a:hover{color:#000000}
+.tile{transition:background .12s ease,border-color .12s ease}
+.tile:hover{background:#FFF7F6;border-color:#EFCFCB}
+.tile:focus-visible{outline:2px solid #EE8378;outline-offset:2px}
+</style>
+</helmet>
+<div style="width: 1440px; height: 900px; position: relative; overflow: hidden; font-family: Nunito, -apple-system, 'Helvetica Neue', sans-serif; color: #2D3128">
+  <div style="position: absolute; inset: 0">
+    <dc-import name="Backdrop" hint-size="1440px,900px"></dc-import>
+  </div>
+
+  <div style="position: absolute; top: 10px; right: 14px; width: 460px; display: flex; flex-direction: column; align-items: flex-end; gap: 6px">
+    <div style="filter: drop-shadow(0 2px 2px rgba(90,60,55,0.25))">
+      <dc-import name="Flower" res="30" cell="4" label="Klair is open" hint-size="120px,120px"></dc-import>
+    </div>
+
+    <section aria-label="Klair" style="width: 100%; box-sizing: border-box; border-radius: 26px; padding: 20px; display: flex; flex-direction: column; gap: 16px; background: linear-gradient(180deg, rgba(255,255,255,0.64), rgba(255,244,242,0.46)); backdrop-filter: blur(36px) saturate(170%); -webkit-backdrop-filter: blur(36px) saturate(170%); border: 1px solid rgba(255,255,255,0.75); box-shadow: inset 0 1px 0 rgba(255,255,255,0.95), inset 0 0 0 6px rgba(255,255,255,0.14), 0 30px 70px rgba(90,60,55,0.22), 0 2px 6px rgba(90,60,55,0.08)">
+      <div style="display: flex; flex-direction: column; gap: 8px">
+        <span style="font-family: Silkscreen, monospace; font-size: 11px; color: #46522F">Where you are</span>
+        <h1 style="margin: 0; font-size: 19px; font-weight: 800; line-height: 1.3">Gradient descent — Learning rate</h1>
+        <p style="margin: 0; font-size: 14.5px; line-height: 1.5; color: #3F4538; text-wrap: pretty">You've stayed on the step-size part for a few minutes. Earlier you read the Machine learning overview in another tab.</p>
+        <div style="display: flex; flex-wrap: wrap; gap: 6px">
+          <span style="font-size: 12px; font-weight: 600; padding: 3px 8px; border-radius: 6px; background: #FFFFFF; color: #46522F">On screen · 2:14 PM</span>
+          <span style="font-size: 12px; font-weight: 600; padding: 3px 8px; border-radius: 6px; background: #FFFFFF; color: #46522F">Earlier tab · 2:02 PM</span>
+        </div>
+      </div>
+
+      <nav aria-label="Ideas" style="display: flex; flex-direction: column; gap: 8px">
+        <a class="tile" href="#" style="display: flex; align-items: center; gap: 12px; padding: 12px; border-radius: 16px; border: 1px solid #F3E6E3; background: #FFFFFF; text-decoration: none; min-height: 64px; box-sizing: border-box">
+          <kbd style="flex: none; font: 700 12px Nunito, -apple-system, sans-serif; line-height: 1; padding: 6px 8px; border-radius: 6px; background: #FFFFFF; border: 1px solid #E2D3D0; box-shadow: 0 2px 0 #E2D3D0; color: #2D3128">⌘1</kbd>
+          <span style="flex: 1; display: flex; flex-direction: column; gap: 2px">
+            <span style="font-size: 15px; font-weight: 700">Summarize this section</span>
+            <span style="font-size: 13px; color: #686D60">From what's been on screen so far</span>
+          </span>
+          <span aria-hidden="true" style="flex: none; width: 56px; height: 40px; border-radius: 8px; background: #FBF7F5; padding: 8px; box-sizing: border-box; display: flex; flex-direction: column; gap: 4px">
+            <span style="height: 4px; width: 100%; background: #E6DCD9"></span>
+            <span style="height: 4px; width: 80%; background: #E6DCD9"></span>
+            <span style="height: 4px; width: 90%; background: #E6DCD9"></span>
+          </span>
+        </a>
+        <a class="tile" href="Result.dc.html" style="display: flex; align-items: center; gap: 12px; padding: 12px; border-radius: 16px; border: 1px solid #EFCFCB; background: #FFF7F6; text-decoration: none; min-height: 64px; box-sizing: border-box">
+          <kbd style="flex: none; font: 700 12px Nunito, -apple-system, sans-serif; line-height: 1; padding: 6px 8px; border-radius: 6px; background: #FCE4E2; border: 1px solid #EBB8B2; box-shadow: 0 2px 0 #EBB8B2; color: #2D3128">⌘2</kbd>
+          <span style="flex: 1; display: flex; flex-direction: column; gap: 2px">
+            <span style="font-size: 15px; font-weight: 700">Play with gradient descent</span>
+            <span style="font-size: 13px; color: #686D60">A small live demo plus the code behind it</span>
+          </span>
+          <span aria-hidden="true" style="flex: none; width: 56px; height: 40px; border-radius: 8px; background: #FBF7F5; position: relative; overflow: hidden">
+            <span style="position: absolute; left: 8px; top: 8px; width: 4px; height: 4px; background: #EE8378"></span>
+            <span style="position: absolute; left: 16px; top: 18px; width: 4px; height: 4px; background: #EE8378"></span>
+            <span style="position: absolute; left: 22px; top: 25px; width: 4px; height: 4px; background: #EE8378"></span>
+            <span style="position: absolute; left: 27px; top: 28px; width: 4px; height: 4px; background: #56623F"></span>
+            <span style="position: absolute; left: 6px; right: 6px; bottom: 6px; height: 2px; background: #C9D1B6"></span>
+          </span>
+        </a>
+        <a class="tile" href="Quiz.dc.html" style="display: flex; align-items: center; gap: 12px; padding: 12px; border-radius: 16px; border: 1px solid #F3E6E3; background: #FFFFFF; text-decoration: none; min-height: 64px; box-sizing: border-box">
+          <kbd style="flex: none; font: 700 12px Nunito, -apple-system, sans-serif; line-height: 1; padding: 6px 8px; border-radius: 6px; background: #FFFFFF; border: 1px solid #E2D3D0; box-shadow: 0 2px 0 #E2D3D0; color: #2D3128">⌘3</kbd>
+          <span style="flex: 1; display: flex; flex-direction: column; gap: 2px">
+            <span style="font-size: 15px; font-weight: 700">Quiz me</span>
+            <span style="font-size: 13px; color: #686D60">Three questions on what you've read</span>
+          </span>
+          <span aria-hidden="true" style="flex: none; width: 56px; height: 40px; border-radius: 8px; background: #FBF7F5; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; padding: 8px; box-sizing: border-box">
+            <span style="background: #C9D1B6"></span>
+            <span style="background: #E6DCD9"></span>
+            <span style="background: #E6DCD9"></span>
+            <span style="background: #E6DCD9"></span>
+          </span>
+        </a>
+      </nav>
+
+      <div style="position: relative; display: flex">
+        <input aria-label="Ask Klair for something else" placeholder="Ask for something else…" style="flex: 1; height: 46px; box-sizing: border-box; padding: 0 56px 0 14px; border-radius: 14px; border: 1px solid #EADCD9; background: #FFFFFF; font: 500 14.5px Nunito, -apple-system, sans-serif; color: #2D3128">
+        <kbd style="position: absolute; right: 10px; top: 12px; font: 700 11px Nunito, -apple-system, sans-serif; line-height: 1; padding: 5px 7px; border-radius: 6px; background: #FBF7F5; border: 1px solid #E2D3D0; box-shadow: 0 2px 0 #E2D3D0; color: #4B5044">⌘K</kbd>
+      </div>
+
+      <div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; font-size: 12.5px; font-weight: 600; color: #4B5044">
+        <span style="display: flex; align-items: center; gap: 6px"><kbd style="font: 700 10.5px Nunito, -apple-system, sans-serif; line-height: 1; padding: 4px 6px; border-radius: 5px; background: #FFFFFF; border: 1px solid #E2D3D0; box-shadow: 0 2px 0 #E2D3D0; color: #2D3128">⌘1–3</kbd> pick</span>
+        <span style="display: flex; align-items: center; gap: 6px"><kbd style="font: 700 10.5px Nunito, -apple-system, sans-serif; line-height: 1; padding: 4px 6px; border-radius: 5px; background: #FFFFFF; border: 1px solid #E2D3D0; box-shadow: 0 2px 0 #E2D3D0; color: #2D3128">⌘↑↓</kbd> move</span>
+        <a href="Shortcuts.dc.html" style="display: flex; align-items: center; gap: 6px; text-decoration: none; color: #4B5044"><kbd style="font: 700 10.5px Nunito, -apple-system, sans-serif; line-height: 1; padding: 4px 6px; border-radius: 5px; background: #FFFFFF; border: 1px solid #E2D3D0; box-shadow: 0 2px 0 #E2D3D0; color: #2D3128">⌘/</kbd> all keys</a>
+        <span style="display: flex; align-items: center; gap: 6px"><kbd style="font: 700 10.5px Nunito, -apple-system, sans-serif; line-height: 1; padding: 4px 6px; border-radius: 5px; background: #FFFFFF; border: 1px solid #E2D3D0; box-shadow: 0 2px 0 #E2D3D0; color: #2D3128">esc</kbd> close</span>
+      </div>
+    </section>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>

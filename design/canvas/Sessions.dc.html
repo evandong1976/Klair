@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Klair — sessions</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800&amp;family=Geist+Mono:wght@400;500&amp;family=Silkscreen&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#A8463D}a:hover{color:#7E2F28}
+</style>
+</helmet>
+<div style="min-height: 100vh; position: relative; overflow: hidden; box-sizing: border-box; background: #D8DECF; font-family: Nunito, -apple-system, 'Helvetica Neue', sans-serif; color: #2D3128">
+  <div aria-hidden="true" style="position: absolute; left: -80px; bottom: -120px">
+    <dc-import name="Flower" res="14" cell="34" hint-size="476px,476px"></dc-import>
+  </div>
+  <div aria-hidden="true" style="position: absolute; right: -60px; top: -80px">
+    <dc-import name="Flower" res="12" cell="30" hint-size="360px,360px"></dc-import>
+  </div>
+
+  <div style="position: relative; min-height: 100vh; box-sizing: border-box; display: flex; flex-wrap: wrap; align-items: stretch; background: linear-gradient(180deg, rgba(255,255,255,0.64), rgba(255,244,242,0.46)); backdrop-filter: blur(36px) saturate(170%); -webkit-backdrop-filter: blur(36px) saturate(170%)">
+    <nav aria-label="Sessions" style="flex: 1 1 240px; max-width: 100%; box-sizing: border-box; border-right: 1px solid rgba(255,255,255,0.8); background: rgba(255,255,255,0.22); padding: 24px 14px; display: flex; flex-direction: column; gap: 18px">
+      <div style="display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 0 8px">
+        <span style="display: flex; align-items: center; gap: 10px">
+          <dc-import name="Flower" res="12" cell="2" hint-size="24px,24px"></dc-import>
+          <span style="font-family: Silkscreen, monospace; font-size: 14px">Klair</span>
+        </span>
+        <button aria-label="New session" style="height: 30px; padding: 0 8px; border-radius: 8px; border: 1px solid #EADCD9; background: #FFFFFF; font: 700 11px Nunito, -apple-system, sans-serif; color: #2D3128; cursor: pointer">⌘N</button>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 2px">
+        <a href="#" style="display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 12px; border-radius: 12px; background: #FFFFFF; color: #2D3128; text-decoration: none; box-shadow: 0 1px 3px rgba(110,70,65,0.08)">
+          <span style="display: flex; flex-direction: column; gap: 2px"><span style="font-size: 14.5px; font-weight: 700">ML study</span><span style="font-size: 12.5px; color: #686D60">Today · observing now</span></span>
+          <span style="font-size: 11px; font-weight: 700; color: #686D60">⌘1</span>
+        </a>
+        <a href="#" style="display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 12px; border-radius: 12px; color: #2D3128; text-decoration: none">
+          <span style="display: flex; flex-direction: column; gap: 2px"><span style="font-size: 14.5px; font-weight: 600">Essay outline</span><span style="font-size: 12.5px; color: #4B5044">Yesterday · 1 h 12 min</span></span>
+          <span style="font-size: 11px; font-weight: 700; color: #4B5044">⌘2</span>
+        </a>
+        <a href="#" style="display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 12px; border-radius: 12px; color: #2D3128; text-decoration: none">
+          <span style="display: flex; flex-direction: column; gap: 2px"><span style="font-size: 14.5px; font-weight: 600">Stats problem set</span><span style="font-size: 12.5px; color: #4B5044">Oct 7 · 48 min</span></span>
+          <span style="font-size: 11px; font-weight: 700; color: #4B5044">⌘3</span>
+        </a>
+      </div>
+    </nav>
+
+    <main style="flex: 999 1 560px; min-width: 0; box-sizing: border-box; padding: 32px 40px 40px 40px; display: flex; flex-direction: column; gap: 28px">
+      <header style="display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 16px">
+        <div style="display: flex; flex-direction: column; gap: 6px">
+          <span style="font-family: Silkscreen, monospace; font-size: 11px; color: #46522F">Observing since 1:58 PM</span>
+          <h1 style="margin: 0; font-size: 30px; font-weight: 800; letter-spacing: -0.01em">ML study</h1>
+        </div>
+        <div style="display: flex; flex-wrap: wrap; gap: 8px">
+          <button style="height: 40px; padding: 0 8px 0 16px; border-radius: 12px; border: 1px solid #EADCD9; background: #FFFFFF; font: 600 13.5px Nunito, -apple-system, sans-serif; color: #2D3128; display: flex; align-items: center; gap: 8px; cursor: pointer">Pause <kbd style="font: 700 10.5px Nunito, -apple-system, sans-serif; line-height: 1; padding: 4px 6px; border-radius: 5px; background: #FBF7F5; border: 1px solid #E2D3D0; color: #2D3128">⌘P</kbd></button>
+          <button style="height: 40px; padding: 0 8px 0 16px; border-radius: 12px; border: 1px solid #E8B9B3; background: #FFFFFF; font: 600 13.5px Nunito, -apple-system, sans-serif; color: #A3271A; display: flex; align-items: center; gap: 8px; cursor: pointer">Delete session <kbd style="font: 700 10.5px Nunito, -apple-system, sans-serif; line-height: 1; padding: 4px 6px; border-radius: 5px; background: #FFF5F4; border: 1px solid #EBC6C1; color: #A3271A">⌘⌫</kbd></button>
+        </div>
+      </header>
+
+      <div style="display: flex; flex-wrap: wrap; gap: 32px; align-items: flex-start">
+        <section aria-label="Timeline" style="flex: 999 1 420px; min-width: 0; display: flex; flex-direction: column">
+          <h2 style="margin: 0 0 14px 0; font-family: Silkscreen, monospace; font-weight: 400; font-size: 11px; color: #46522F">Timeline</h2>
+          <ol style="list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; border-radius: 18px; background: #FFFFFF; border: 1px solid #F0E4E1">
+            <li style="display: grid; grid-template-columns: 72px minmax(0, 1fr); gap: 16px; padding: 16px 18px; border-bottom: 1px solid #F5EDEB">
+              <span style="font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12px; color: #686D60; padding-top: 2px">2:02 PM</span>
+              <span style="display: flex; flex-direction: column; gap: 6px">
+                <span style="font-size: 15px; font-weight: 600">Read "Machine learning"</span>
+                <span style="display: flex; gap: 6px; flex-wrap: wrap; align-items: center"><span style="font-size: 11.5px; font-weight: 700; padding: 2px 7px; border-radius: 5px; border: 1px solid #D4D9C6; color: #46522F">Seen on screen</span><span style="font-size: 12.5px; color: #686D60">14 captures · encyclopedia.example</span></span>
+              </span>
+            </li>
+            <li style="display: grid; grid-template-columns: 72px minmax(0, 1fr); gap: 16px; padding: 16px 18px; border-bottom: 1px solid #F5EDEB">
+              <span style="font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12px; color: #686D60; padding-top: 2px">2:09 PM</span>
+              <span style="display: flex; flex-direction: column; gap: 6px">
+                <span style="font-size: 15px; font-weight: 600">Switched to "Gradient descent" — linked to the tab above</span>
+                <span style="display: flex; gap: 6px; flex-wrap: wrap; align-items: center"><span style="font-size: 11.5px; font-weight: 700; padding: 2px 7px; border-radius: 5px; border: 1px solid #D4D9C6; color: #46522F">Seen on screen</span><span style="font-size: 12.5px; color: #686D60">Same topic, likely</span></span>
+              </span>
+            </li>
+            <li style="display: grid; grid-template-columns: 72px minmax(0, 1fr); gap: 16px; padding: 16px 18px; border-bottom: 1px solid #F5EDEB">
+              <span style="font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12px; color: #686D60; padding-top: 2px">2:15 PM</span>
+              <span style="display: flex; flex-direction: column; gap: 6px">
+                <span style="font-size: 15px; font-weight: 600">You pressed ⌘2 — "Play with gradient descent"</span>
+                <span style="display: flex; gap: 6px; flex-wrap: wrap; align-items: center"><span style="font-size: 11.5px; font-weight: 700; padding: 2px 7px; border-radius: 5px; background: #56623F; color: #FFFFFF">You asked</span><span style="font-size: 11.5px; font-weight: 700; padding: 2px 7px; border-radius: 5px; background: #FCE4E2; color: #8E3A32">Klair's answer</span><span style="font-size: 12.5px; color: #686D60">Complete</span></span>
+                <a href="Result.dc.html" style="font-size: 13px; font-weight: 700">Open answer</a>
+              </span>
+            </li>
+            <li style="display: grid; grid-template-columns: 72px minmax(0, 1fr); gap: 16px; padding: 16px 18px">
+              <span style="font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12px; color: #686D60; padding-top: 2px">2:31 PM</span>
+              <span style="display: flex; flex-direction: column; gap: 6px">
+                <span style="font-size: 15px; font-weight: 600">You pressed ⌘3 — "Quiz me"</span>
+                <span style="display: flex; gap: 6px; flex-wrap: wrap; align-items: center"><span style="font-size: 11.5px; font-weight: 700; padding: 2px 7px; border-radius: 5px; background: #56623F; color: #FFFFFF">You asked</span><span style="font-size: 12.5px; color: #686D60">Cancelled after 1 of 3 questions</span></span>
+              </span>
+            </li>
+          </ol>
+        </section>
+
+        <aside style="flex: 1 1 280px; min-width: 0; display: flex; flex-direction: column; gap: 16px">
+          <section style="border-radius: 18px; background: #FFFFFF; border: 1px solid #F0E4E1; padding: 18px; display: flex; flex-direction: column; gap: 12px">
+            <h2 style="margin: 0; font-family: Silkscreen, monospace; font-weight: 400; font-size: 11px; color: #46522F">What Klair is holding</h2>
+            <dl style="margin: 0; display: grid; grid-template-columns: max-content minmax(0, 1fr); column-gap: 14px; row-gap: 10px; font-size: 14px">
+              <dt style="color: #686D60">On screen</dt><dd style="margin: 0; font-weight: 600">Learning rate section</dd>
+              <dt style="color: #686D60">Topic</dt><dd style="margin: 0; font-weight: 600">Optimization in ML <span style="color: #686D60; font-weight: 400">— a guess</span></dd>
+              <dt style="color: #686D60">Related</dt><dd style="margin: 0; font-weight: 600">Machine learning tab</dd>
+            </dl>
+          </section>
+          <section style="border-radius: 18px; background: #FFFFFF; border: 1px solid #F0E4E1; padding: 18px; display: flex; flex-direction: column; gap: 10px">
+            <h2 style="margin: 0; font-family: Silkscreen, monospace; font-weight: 400; font-size: 11px; color: #46522F">Privacy</h2>
+            <p style="margin: 0; font-size: 14px; line-height: 1.5">Saved on this Mac. Deleted after [RETENTION].</p>
+            <p style="margin: 0; font-size: 14px; line-height: 1.5">Sent to Claude 6 times this session — only the screens tied to an idea or answer.</p>
+            <a href="#" style="font-size: 13px; font-weight: 700">Show in Finder</a>
+          </section>
+        </aside>
+      </div>
+    </main>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":860}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>

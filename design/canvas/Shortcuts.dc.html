@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Klair — all shortcuts</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800&amp;family=Geist+Mono:wght@400;500&amp;family=Silkscreen&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#A8463D}a:hover{color:#7E2F28}
+</style>
+</helmet>
+<div style="width: 1440px; height: 900px; position: relative; overflow: hidden; font-family: Nunito, -apple-system, 'Helvetica Neue', sans-serif; color: #2D3128">
+  <div style="position: absolute; inset: 0">
+    <dc-import name="Backdrop" hint-size="1440px,900px"></dc-import>
+  </div>
+
+  <div style="position: absolute; top: 10px; right: 14px; filter: drop-shadow(0 2px 2px rgba(90,60,55,0.25))">
+    <dc-import name="Flower" res="30" cell="3" label="Klair is open" hint-size="90px,90px"></dc-import>
+  </div>
+
+  <section aria-label="Klair shortcuts" style="position: absolute; left: 260px; top: 120px; width: 920px; box-sizing: border-box; border-radius: 28px; padding: 28px 32px; display: flex; flex-direction: column; gap: 22px; background: linear-gradient(180deg, rgba(255,255,255,0.64), rgba(255,244,242,0.46)); backdrop-filter: blur(36px) saturate(170%); -webkit-backdrop-filter: blur(36px) saturate(170%); border: 1px solid rgba(255,255,255,0.75); box-shadow: inset 0 1px 0 rgba(255,255,255,0.95), inset 0 0 0 6px rgba(255,255,255,0.14), 0 30px 70px rgba(90,60,55,0.22), 0 2px 6px rgba(90,60,55,0.08)">
+    <header style="display: flex; align-items: center; justify-content: space-between; gap: 16px">
+      <div style="display: flex; flex-direction: column; gap: 4px">
+        <span style="font-family: Silkscreen, monospace; font-size: 11px; color: #46522F">Klair</span>
+        <h1 style="margin: 0; font-size: 24px; font-weight: 800">Every shortcut</h1>
+      </div>
+      <span style="display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; color: #4B5044"><kbd style="font: 700 11px Nunito, -apple-system, sans-serif; line-height: 1; padding: 5px 7px; border-radius: 6px; background: #FFFFFF; border: 1px solid #E2D3D0; box-shadow: 0 2px 0 #E2D3D0; color: #2D3128">⌘/</kbd> or <kbd style="font: 700 11px Nunito, -apple-system, sans-serif; line-height: 1; padding: 5px 7px; border-radius: 6px; background: #FFFFFF; border: 1px solid #E2D3D0; box-shadow: 0 2px 0 #E2D3D0; color: #2D3128">esc</kbd> to close</span>
+    </header>
+
+    <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px">
+      <sc-for list="{{groups}}" as="g" hint-placeholder-count="4">
+        <div style="border-radius: 18px; background: #FFFFFF; border: 1px solid #F3E6E3; padding: 16px 18px; display: flex; flex-direction: column; gap: 10px">
+          <h2 style="margin: 0; font-size: 13px; font-weight: 800; color: #46522F">{{g.title}}</h2>
+          <sc-for list="{{g.rows}}" as="r" hint-placeholder-count="3">
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 28px">
+              <span style="font-size: 14px; font-weight: 600">{{r.label}}</span>
+              <kbd style="font: 700 11.5px Nunito, -apple-system, sans-serif; line-height: 1; padding: 5px 8px; border-radius: 6px; background: #FFFFFF; border: 1px solid #E2D3D0; box-shadow: 0 2px 0 #E2D3D0; color: #2D3128; white-space: nowrap">{{r.keys}}</kbd>
+            </div>
+          </sc-for>
+        </div>
+      </sc-for>
+    </div>
+  </section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {
+      groups: [
+        { title: 'Anywhere', rows: [
+          { label: 'Open or close Klair', keys: 'fn' },
+          { label: 'Pause or resume observing', keys: 'fn P' },
+          { label: 'Quiet ideas for 30 min', keys: 'fn Q' }
+        ] },
+        { title: 'When Klair is open', rows: [
+          { label: 'Pick an idea', keys: '⌘1 ⌘2 ⌘3' },
+          { label: 'Ask anything', keys: '⌘K' },
+          { label: 'Move between ideas', keys: '⌘↑ ⌘↓' },
+          { label: 'Close', keys: 'esc' }
+        ] },
+        { title: 'In an answer', rows: [
+          { label: 'Back to ideas', keys: '⌘[' },
+          { label: 'Reshape chips', keys: '⌘⇧1–3' },
+          { label: 'Copy code', keys: '⌘C' },
+          { label: 'Nudge a slider', keys: '⌘← ⌘→' }
+        ] },
+        { title: 'In a quiz', rows: [
+          { label: 'Answer', keys: '⌘1–4' },
+          { label: 'Next question', keys: '⌘↵' },
+          { label: 'Start over', keys: '⌘R' }
+        ] }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Klair flower</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div role="img" aria-label="{{label}}" style="width: {{size}}px; height: {{size}}px; display: grid; grid-template-columns: repeat({{n}}, {{cell}}px); grid-auto-rows: {{cell}}px">
+  <sc-for list="{{cells}}" as="c" hint-placeholder-count="0">
+    <span style="display: block; background: {{c}}"></span>
+  </sc-for>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"res":{"editor":"int","default":30,"min":6,"max":48},"cell":{"editor":"int","default":8,"min":1,"max":16,"unit":"px"},"paused":{"editor":"boolean","default":false},"label":{"editor":null,"default":"Klair is observing"},"$preview":{"width":240,"height":240}}'>
+class Component extends DCLogic {
+  seg(px, py, ax, ay, bx, by) {
+    const dx = bx - ax, dy = by - ay;
+    const t = Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / (dx * dx + dy * dy)));
+    const x = ax + t * dx - px, y = ay + t * dy - py;
+    return Math.sqrt(x * x + y * y);
+  }
+  blossom(u, v, cx, cy, R, rot) {
+    const dx = u - cx, dy = v - cy;
+    const r = Math.sqrt(dx * dx + dy * dy) / R;
+    if (r > 1) return null;
+    const th = Math.atan2(dy, dx) - rot;
+    const lobe = Math.abs(Math.cos(th * 2.5));
+    const edge = 0.38 + 0.62 * Math.pow(lobe, 0.6);
+    if (r > edge) return null;
+    const rel = r / edge;
+    if (r < 0.14) return '#EE8378';
+    if (r < 0.28) return '#F4A39B';
+    if (lobe < 0.3 && rel > 0.25 && rel < 0.8) return '#F8BDB7';
+    if (rel < 0.55) return '#F9C9C4';
+    if (rel < 0.85) return '#FCDDDA';
+    return '#FFEEEC';
+  }
+  ell(u, v, cx, cy, a, b, ang) {
+    const dx = u - cx, dy = v - cy;
+    const c = Math.cos(-ang), s = Math.sin(-ang);
+    const x = dx * c - dy * s, y = dx * s + dy * c;
+    const d = (x * x) / (a * a) + (y * y) / (b * b);
+    return d <= 1 ? { d: d, x: x, y: y } : null;
+  }
+  leaf(u, v, cx, cy, a, b, ang) {
+    const dx = u - cx, dy = v - cy;
+    const c = Math.cos(-ang), s = Math.sin(-ang);
+    const x = dx * c - dy * s, y = dx * s + dy * c;
+    if (Math.abs(x) > a) return null;
+    const half = b * (1 - (x * x) / (a * a));
+    if (Math.abs(y) > half) return null;
+    return y < 0 ? '#8A9868' : '#A9B583';
+  }
+  sample(u, v, w) {
+    const A = this.blossom(u, v, 0.62, 0.28, 0.22, -0.25);
+    if (A) return A;
+    const B = this.blossom(u, v, 0.30, 0.54, 0.17, 0.45);
+    if (B) return B;
+    const bud = this.ell(u, v, 0.83, 0.56, 0.075, 0.05, -0.25);
+    if (bud) return bud.d < 0.4 ? '#F9C3BE' : '#FDE0DE';
+    if (this.ell(u, v, 0.765, 0.57, 0.03, 0.035, 0)) return '#8A9868';
+    const L = [[0.53, 0.81, 0.12, 0.045, 0.45], [0.24, 0.77, 0.10, 0.04, -0.55], [0.63, 0.63, 0.085, 0.035, -0.5]];
+    for (let k = 0; k < L.length; k++) {
+      const l = L[k];
+      const col = this.leaf(u, v, l[0], l[1], l[2], l[3], l[4]);
+      if (col) return col;
+    }
+    const S = [[0.34, 0.98, 0.40, 0.74], [0.40, 0.74, 0.47, 0.56], [0.47, 0.56, 0.58, 0.36], [0.41, 0.70, 0.31, 0.56], [0.49, 0.52, 0.77, 0.57]];
+    for (let k = 0; k < S.length; k++) {
+      const p = S[k];
+      if (this.seg(u, v, p[0], p[1], p[2], p[3]) < w) return '#9CAA77';
+    }
+    return null;
+  }
+  gray(hex) {
+    const r = parseInt(hex.slice(1, 3), 16), g = parseInt(hex.slice(3, 5), 16), b = parseInt(hex.slice(5, 7), 16);
+    const L = Math.round(0.3 * r + 0.59 * g + 0.11 * b);
+    return 'rgb(' + L + ',' + L + ',' + Math.max(0, L - 4) + ')';
+  }
+  build(N, paused) {
+    const out = [];
+    const w = Math.max(0.018, 0.6 / N);
+    for (let j = 0; j < N; j++) {
+      for (let i = 0; i < N; i++) {
+        let c = this.sample((i + 0.5) / N, (j + 0.5) / N, w);
+        if (c && paused) c = this.gray(c);
+        out.push(c || 'transparent');
+      }
+    }
+    return out;
+  }
+  renderVals() {
+    const N = Math.max(6, Math.min(48, Math.round(Number(this.props.res ?? 30))));
+    const cell = Math.max(1, Number(this.props.cell ?? 8));
+    const paused = this.props.paused === true || this.props.paused === 'true';
+    const key = N + '|' + paused;
+    if (this._key !== key) { this._key = key; this._cells = this.build(N, paused); }
+    return { cells: this._cells, n: N, cell: cell, size: N * cell, label: this.props.label ?? 'Klair is observing' };
+  }
+}
+</script>
+</body>
+</html>

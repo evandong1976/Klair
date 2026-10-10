@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Klair — start a session</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800&amp;family=Geist+Mono:wght@400;500&amp;family=Silkscreen&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#A8463D}a:hover{color:#7E2F28}
+</style>
+</helmet>
+<div style="width: 560px; height: 720px; position: relative; overflow: hidden; border-radius: 28px; background: #D8DECF; font-family: Nunito, -apple-system, 'Helvetica Neue', sans-serif; color: #2D3128">
+  <div aria-hidden="true" style="position: absolute; left: -60px; top: 260px">
+    <dc-import name="Flower" res="14" cell="28" hint-size="392px,392px"></dc-import>
+  </div>
+  <div aria-hidden="true" style="position: absolute; right: -90px; top: -110px">
+    <dc-import name="Flower" res="12" cell="24" hint-size="288px,288px"></dc-import>
+  </div>
+
+  <div style="position: absolute; inset: 0; box-sizing: border-box; border-radius: 28px; padding: 32px 36px 28px 36px; display: flex; flex-direction: column; gap: 20px; background: linear-gradient(180deg, rgba(255,255,255,0.64), rgba(255,244,242,0.46)); backdrop-filter: blur(36px) saturate(170%); -webkit-backdrop-filter: blur(36px) saturate(170%); border: 1px solid rgba(255,255,255,0.75); box-shadow: inset 0 1px 0 rgba(255,255,255,0.95), inset 0 0 0 6px rgba(255,255,255,0.14)">
+    <div style="display: flex; align-items: center; gap: 18px">
+      <dc-import name="Flower" res="30" cell="3" label="Klair" hint-size="90px,90px"></dc-import>
+      <div style="display: flex; flex-direction: column; gap: 4px">
+        <span style="font-family: Silkscreen, monospace; font-size: 12px; color: #46522F">Klair</span>
+        <h1 style="margin: 0; font-size: 28px; font-weight: 800; letter-spacing: -0.01em">Start a session</h1>
+      </div>
+    </div>
+    <p style="margin: 0; font-size: 15px; line-height: 1.5; color: #3F4538; text-wrap: pretty">Klair watches your screen while a session is on. When you pause, the flower offers ideas. Tap fn to open it, then ⌘1, ⌘2 or ⌘3 to pick — nothing runs until you do.</p>
+
+    <div style="display: flex; flex-direction: column; gap: 8px">
+      <label for="sname" style="font-size: 13.5px; font-weight: 700">Session name</label>
+      <input id="sname" value="ML study" style="height: 44px; box-sizing: border-box; padding: 0 14px; border-radius: 12px; border: 1px solid #EADCD9; background: #FFFFFF; font: 500 15px Nunito, -apple-system, sans-serif; color: #2D3128">
+    </div>
+
+    <ul style="list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; border-radius: 18px; background: #FFFFFF; border: 1px solid #F0E4E1">
+      <li style="display: flex; align-items: center; gap: 14px; padding: 13px 16px; border-bottom: 1px solid #F5EDEB">
+        <span aria-hidden="true" style="width: 12px; height: 12px; background: #EE8378; flex: none"></span>
+        <span style="flex: 1; display: flex; flex-direction: column; gap: 2px">
+          <span style="font-size: 14px; font-weight: 700">Screen recording</span>
+          <span style="font-size: 12.5px; color: #686D60">Needed before Klair can see anything</span>
+        </span>
+        <button style="height: 34px; padding: 0 12px; border-radius: 10px; border: 1px solid #EADCD9; background: #FFFFFF; font: 600 13px Nunito, -apple-system, sans-serif; color: #2D3128; cursor: pointer">Allow</button>
+      </li>
+      <li style="display: flex; align-items: center; gap: 14px; padding: 13px 16px; border-bottom: 1px solid #F5EDEB">
+        <span aria-hidden="true" style="width: 12px; height: 12px; background: #EE8378; flex: none"></span>
+        <span style="flex: 1; display: flex; flex-direction: column; gap: 2px">
+          <span style="font-size: 14px; font-weight: 700">The fn key</span>
+          <span style="font-size: 12.5px; color: #686D60">Input Monitoring lets Klair notice when you tap fn</span>
+        </span>
+        <button style="height: 34px; padding: 0 12px; border-radius: 10px; border: 1px solid #EADCD9; background: #FFFFFF; font: 600 13px Nunito, -apple-system, sans-serif; color: #2D3128; cursor: pointer">Allow</button>
+      </li>
+      <li style="display: flex; align-items: center; gap: 14px; padding: 13px 16px">
+        <span aria-hidden="true" style="width: 12px; height: 12px; background: #9CAA77; flex: none"></span>
+        <span style="flex: 1; display: flex; flex-direction: column; gap: 2px">
+          <span style="font-size: 14px; font-weight: 700">Kept on this Mac</span>
+          <span style="font-size: 12.5px; color: #686D60">Screenshots and history are deleted after [RETENTION]</span>
+        </span>
+        <a href="#" style="font-size: 13px; font-weight: 600">Change</a>
+      </li>
+    </ul>
+
+    <p style="margin: 0; font-size: 12.5px; line-height: 1.5; color: #4B5044; text-wrap: pretty">To make ideas and answers, Klair sends the relevant screenshots and notes to Claude. Pause anytime with fn P.</p>
+
+    <div style="margin-top: auto; display: flex; justify-content: flex-end; gap: 10px">
+      <button style="height: 44px; padding: 0 10px 0 16px; border-radius: 12px; border: 1px solid #EADCD9; background: #FFFFFF; font: 600 14px Nunito, -apple-system, sans-serif; color: #2D3128; display: flex; align-items: center; gap: 8px; cursor: pointer">Not now <kbd style="font: 700 10.5px Nunito, -apple-system, sans-serif; line-height: 1; padding: 4px 6px; border-radius: 5px; background: #FBF7F5; border: 1px solid #E2D3D0; color: #2D3128">esc</kbd></button>
+      <button disabled style="height: 44px; padding: 0 10px 0 18px; border-radius: 12px; border: 0; background: #2D3128; color: #FFFCFB; opacity: 0.45; font: 700 14px Nunito, -apple-system, sans-serif; display: flex; align-items: center; gap: 8px; cursor: not-allowed">Start observing <kbd style="font: 700 10.5px Nunito, -apple-system, sans-serif; line-height: 1; padding: 4px 6px; border-radius: 5px; background: #4A4F43; border: 1px solid #5C6254; color: #FFFCFB">⌘↵</kbd></button>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":560,"height":720}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>
