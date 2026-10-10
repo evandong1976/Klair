@@ -77,12 +77,14 @@ export class ControllerCore {
     this.dwellStart = this.now()
     // A suggestion request for the previous screen is now stale; its result will be dropped.
     this.inflightGeneration = null
-    // Shown-but-unpicked ideas belong to the old screen. Keep them while the panel is open
-    // so the user isn't yanked around; an already-selected request stays bound to its capture.
-    if (this.current && !this.panelOpen && this.executingSetId !== this.current.id) {
+    // Shown-but-unpicked ideas belong to the old screen, so they go (and their shortcuts
+    // with them). An idea that is already running stays bound to its own capture.
+    if (this.current && this.executingSetId !== this.current.id) {
       effects.push({ type: 'invalidateSuggestions', set: this.current, reason: 'changed' })
       this.current = null
     }
+    // With the panel open the user is looking at Klair: offer ideas for the new screen now.
+    if (this.panelOpen && !this.current) effects.push(this.request('user'))
     return effects
   }
 
@@ -99,11 +101,21 @@ export class ControllerCore {
     return [this.request('dwell')]
   }
 
-  /** Explicit user request (panel opened with nothing to show). Ignores dwell, cooldown and quiet. */
+  /**
+   * Explicit user request (panel opened, or back to ideas). Ignores dwell, cooldown and
+   * quiet. Ideas kept for an older screen while one of them ran are replaced.
+   */
   requestNow(): Effect[] {
-    if (this.currentCaptureId === null || this.inflightGeneration !== null || this.current)
-      return []
-    return [this.request('user')]
+    if (this.currentCaptureId === null || this.inflightGeneration !== null) return []
+    const effects: Effect[] = []
+    if (this.current) {
+      if (this.current.captureId === this.currentCaptureId) return []
+      if (this.executingSetId === this.current.id) return []
+      effects.push({ type: 'invalidateSuggestions', set: this.current, reason: 'changed' })
+      this.current = null
+    }
+    effects.push(this.request('user'))
+    return effects
   }
 
   private request(reason: 'dwell' | 'user'): Effect {

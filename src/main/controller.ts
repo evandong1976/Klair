@@ -466,7 +466,8 @@ export function openPanel(): void {
     s.answer && (s.answer.status === 'pending' || s.answer.status === 'streaming')
       ? 'answer'
       : 'ideas'
-  if (!s.suggestions) apply(core.requestNow())
+  // Fresh ideas for the current screen, unless the shown ones are already for it.
+  apply(core.requestNow())
   setState({ panel: view, nudge: false })
   windows.setPanelView(view)
   windows.showPanel()
@@ -492,7 +493,7 @@ export function showShortcuts(): void {
 export function backToIdeas(): void {
   setState({ panel: 'ideas' })
   windows.setPanelView('ideas')
-  if (!getState().suggestions) apply(core.requestNow())
+  apply(core.requestNow())
 }
 
 export function pickKey(key: number): void {

@@ -2,8 +2,12 @@ import { createHash } from 'crypto'
 import { desktopCapturer, screen, type NativeImage } from 'electron'
 import { activeWindow, type ActiveWindow } from './activewindow'
 
-// Periodic screen capture with cheap local change detection. Klair's own windows
-// use setContentProtection(true), so they are excluded from these frames on macOS.
+// Periodic screen capture with cheap local change detection. The screen is checked
+// every interval, but a frame only counts as `changed` (and is stored, noted and
+// offered ideas for) when it differs substantially from the last *stored* frame:
+// comparing with the stored frame, not the previous tick, lets slow edits (typing,
+// gradual scrolling) add up instead of slipping under the threshold one tick at a time.
+// Klair's own windows use setContentProtection(true), so they are excluded on macOS.
 
 export interface Frame {
   at: Date
@@ -13,9 +17,12 @@ export interface Frame {
   meta: ActiveWindow
 }
 
-const THUMB_W = 32
-const THUMB_H = 20
-const CHANGE_THRESHOLD = 4 // mean absolute grey difference (0–255) that counts as "changed"
+// Measured on real pages (1440×900): switching pages or scrolling a line changes 17–45%
+// of 64×40 cells; a moved pointer, a clock tick or the panel opening changes under 0.5%.
+const THUMB_W = 64
+const THUMB_H = 40
+const CELL_DELTA = 24 // grey levels (0–255) a cell must move to count as changed
+export const CHANGE_SHARE = 0.05 // share of cells that must change: "substantial"
 
 function grey(img: NativeImage): Uint8Array {
   const small = img.resize({ width: THUMB_W, height: THUMB_H, quality: 'good' })
@@ -30,16 +37,18 @@ function grey(img: NativeImage): Uint8Array {
   return out
 }
 
-function diff(a: Uint8Array, b: Uint8Array): number {
-  let sum = 0
-  for (let i = 0; i < a.length; i++) sum += Math.abs(a[i] - b[i])
-  return sum / a.length
+/** Share (0–1) of thumbnail cells whose grey level moved by more than CELL_DELTA. */
+export function changedShare(a: Uint8Array, b: Uint8Array): number {
+  if (a.length !== b.length) return 1
+  let n = 0
+  for (let i = 0; i < a.length; i++) if (Math.abs(a[i] - b[i]) > CELL_DELTA) n++
+  return n / a.length
 }
 
 export class CaptureLoop {
   private timer: NodeJS.Timeout | null = null
-  private prevGrey: Uint8Array | null = null
-  private prevMetaKey = ''
+  private storedGrey: Uint8Array | null = null // thumbnail of the last stored frame
+  private storedMetaKey = ''
   private busy = false
 
   constructor(
@@ -54,7 +63,7 @@ export class CaptureLoop {
 
   start(): void {
     if (this.timer) return
-    this.prevGrey = null
+    this.storedGrey = null
     this.timer = setInterval(() => void this.tick(), this.intervalMs)
     void this.tick()
   }
@@ -83,11 +92,13 @@ export class CaptureLoop {
       const g = grey(src.thumbnail)
       const metaKey = `${meta.appName}|${meta.windowTitle}|${meta.url}`
       const changed =
-        this.prevGrey === null ||
-        diff(g, this.prevGrey) > CHANGE_THRESHOLD ||
-        metaKey !== this.prevMetaKey
-      this.prevGrey = g
-      this.prevMetaKey = metaKey
+        this.storedGrey === null ||
+        changedShare(g, this.storedGrey) >= CHANGE_SHARE ||
+        metaKey !== this.storedMetaKey
+      if (changed) {
+        this.storedGrey = g
+        this.storedMetaKey = metaKey
+      }
       const png = changed ? src.thumbnail.toPNG() : Buffer.alloc(0)
       await this.onFrame({
         at: new Date(),

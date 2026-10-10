@@ -105,16 +105,41 @@ test('failed generation allows a quiet retry after cooldown', () => {
   assert.equal(core.tick()[0].type, 'requestSuggestions')
 })
 
-test('screen change while panel is open keeps the ideas', () => {
-  const { core, clock } = setup()
-  core.onCapture(1, true)
+function shown(core: ControllerCore, clock: { t: number }, id: string, captureId: number): void {
+  core.onCapture(captureId, true)
   clock.t += 61_000
   const [req] = core.tick()
   const gen = req.type === 'requestSuggestions' ? req.generationId : -1
-  core.onSuggestions(gen, makeSet('a', 1, gen))
+  core.onSuggestions(gen, makeSet(id, captureId, gen))
+}
+
+test('screen change while the panel is open replaces the ideas at once', () => {
+  const { core, clock } = setup()
+  shown(core, clock, 'a', 1)
   core.setPanelOpen(true)
+  const fx = core.onCapture(2, true)
+  assert.deepEqual(
+    fx.map((e) => e.type),
+    ['invalidateSuggestions', 'requestSuggestions']
+  )
+  assert.equal(fx[1].type === 'requestSuggestions' && fx[1].captureId, 2)
+  assert.equal(core.current, null)
+  assert.equal(core.select(1)[0].type, 'rejectSelection') // old shortcuts are dead
+})
+
+test('a running idea keeps its set; ideas refresh for the new screen afterwards', () => {
+  const { core, clock } = setup()
+  shown(core, clock, 'a', 1)
+  core.setPanelOpen(true)
+  assert.equal(core.select(1)[0].type, 'execute')
   assert.deepEqual(core.onCapture(2, true), [])
   assert.equal(core.current?.id, 'a')
+  core.executionFinished()
+  const fx = core.requestNow()
+  assert.deepEqual(
+    fx.map((e) => e.type),
+    ['invalidateSuggestions', 'requestSuggestions']
+  )
 })
 
 test('requestNow ignores dwell but not in-flight requests', () => {
