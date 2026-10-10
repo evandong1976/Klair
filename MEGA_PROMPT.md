@@ -20,12 +20,60 @@ Graphify is the chosen context retrieval technology. The remaining stack is the 
 | AI integration | Vercel AI SDK + a vision-capable Claude model | Supports screenshot interpretation, structured suggestions, and streamed answers. Select the specific model using demo-screen quality and latency tests. |
 | Session persistence | SQLite + a local screenshot directory | Stores sessions, captured context, source references, selected actions, and results without a database server. Graphify handles retrieval; SQLite retains the canonical session records. |
 | Background control | A small TypeScript state machine | Makes observation, dwell detection, cooldowns, dismissal, generation, cancellation, and failures explicit and predictable. |
+| Suggestion generation | A TypeScript Suggestion Engine using the AI request layer | Turns a dwell signal and available context into three suggestions. Generating suggestions is separate from executing user-selected assistance. |
 
 Keep capture, storage, and model requests in the desktop background layer, connected to the React interface through a narrow API. A locally configured developer API key is sufficient for the demo; distributing an app that uses a company-owned provider key requires an authenticated backend rather than embedding that key in the app.
 
 Verify the intended Graphify package or repository and its supported ingestion, retrieval, persistence, and deletion interfaces before implementing the integration. The choice of Graphify is established; its exact integration API is not specified by this brief. Do not assume it can ingest screenshots directly: convert captures into supported source material as needed and preserve timestamps and source references.
 
 Screenshots supply visible context, not reliable full-page content or exact browser tab metadata. A browser extension for authorized full-page extraction is a possible later addition. Cloud session sync and a general-purpose agent framework are outside the initial MVP.
+
+## System architecture and ownership
+
+This is the proposed architecture, not a statement of implemented behavior. The background controller owns the active suggestion set, stable suggestion IDs, associated capture IDs, and execution state. React renders that state and sends selection events through a narrow preload/IPC interface. Keep credentials, context assembly, validation, and model calls in the background layer.
+
+```mermaid
+flowchart TD
+    Capture["Screen observation - Electron desktopCapturer"]
+    Store[("SQLite + local screenshot directory")]
+    Prepare["Context preparation"]
+    Index["Graphify indexing adapter"]
+    Retrieve["Graphify retrieval adapter"]
+    Controller["Background controller - TypeScript state machine"]
+    Suggest["Suggestion Engine"]
+    Execute["Selected assistance executor"]
+    AI["AI request layer - Vercel AI SDK"]
+    Model["Cloud model - vision-capable Claude"]
+    UI["Overlay - React + CSS"]
+    Keys["Electron globalShortcut"]
+
+    Capture -->|"Persist accepted capture first"| Store
+    Store -->|"Read committed records"| Prepare
+    Prepare -->|"Supported context + source IDs"| Index
+    Index -->|"Indexed material available for queries"| Retrieve
+    Capture -->|"Observation/change events"| Controller
+    Controller -->|"Dwell signal, subject to cooldown"| Suggest
+    Prepare -->|"Current prepared context"| Suggest
+    Suggest -->|"Request relevant history"| Retrieve
+    Retrieve -->|"Suggestion context"| Suggest
+    Suggest -->|"Generate suggestions only"| AI
+    AI <-->|"Requests and responses"| Model
+    AI -->|"Structured suggestions"| Suggest
+    Suggest -->|"Validated suggestion set"| Controller
+    Controller -->|"Suggestions, progress, streamed results"| UI
+    Keys -->|"Selection event"| Controller
+    UI -->|"Click selection / cancel via IPC"| Controller
+    Controller -->|"Validated explicit selection"| Execute
+    Store -->|"Capture associated with selection"| Execute
+    Execute -->|"Query for selected prompt"| Retrieve
+    Retrieve -->|"Relevant history"| Execute
+    Execute -->|"Prompt + bounded context"| AI
+    AI -->|"Answer stream / failure"| Execute
+    Execute -->|"Execution updates"| Controller
+    Controller -->|"Persist interaction and status"| Store
+```
+
+Arrows show distinct request and data paths, not an automatic execution cycle. Correlate AI responses with their request type and ID: suggestion responses return to the Suggestion Engine, while assistance responses return to the executor. Saving an interaction makes it eligible for indexing; indexing does not trigger another assistance request. Graphify adapters represent intended responsibilities whose concrete APIs still require verification.
 
 ## Product purpose
 
@@ -81,6 +129,8 @@ Capture screen information during an active session using the platform's support
 
 Associate captured information with timestamps and available application, window, or tab metadata. Keep observation lightweight enough to avoid disrupting the user's work.
 
+Persist each accepted capture to the local screenshot directory and commit its metadata and file reference to SQLite before context preparation and indexing. Use stable record IDs and track indexing status so failed work can be retried without duplicates and the index can be rebuilt from canonical records. File writes and SQLite commits are not one atomic transaction: handle incomplete writes and orphaned files, and do not index an incomplete capture record.
+
 ### 2. Extract and maintain context
 
 Convert captured information into a useful representation of what the user is doing. Maintain a compact session context containing:
@@ -95,15 +145,21 @@ Separate observed facts from inferred intent. Connect relevant tab changes witho
 
 Use Graphify to index supported context derived from captures and prior interactions, then retrieve material relevant to the current screen and selected prompt. Combine the retrieved material with the current capture and explicit user request within a bounded context budget. Keep canonical session records in SQLite and maintain references between those records and Graphify's indexed material.
 
+Treat indexing and retrieval as separate operations. Context preparation reads committed records and supplies supported material to the indexing adapter. Suggestion generation and selected assistance request relevant context through the retrieval adapter. Preserve provenance for observed material, user requests, and assistant-generated answers; never treat a prior generated answer as independently observed fact.
+
 Reducing token usage while retaining useful context is a design goal, not an assumed benchmark result. Compare model-input token usage and answer quality against a full-session baseline on the same demo tasks, and account separately for any model usage required to build or update the retrieval index.
 
 ### 3. Detect a possible blocker
 
 Start with a simple, configurable dwell-time signal for the hackathon MVP. Keep thresholds tunable rather than embedding an unvalidated universal duration. Add a cooldown and dismissal behavior so a stationary screen does not cause repeated interruptions.
 
+Feed observation/change events into the background state machine so relevant activity resets dwell tracking and invalidates stale suggestions. Associate suggestion-generation requests with a capture and generation ID; ignore late results for an obsolete suggestion set.
+
 ### 4. Generate relevant suggestions
 
 Generate a small set of distinct, actionable prompts grounded in the current task and available context. For the initial demo, show three options. Use brief labels that make the expected result obvious.
+
+Use a distinct Suggestion Engine supplied with current prepared context and relevant Graphify history. A dwell signal may initiate an AI request to generate suggestions, but must not execute the suggested assistance. Validate the structured response before the controller publishes the suggestion set to React. Rendering a dwell event alone is insufficient unless contextual suggestions are already available or produced by local rules.
 
 Summarization, a coding example, and a quiz are example actions for learning about ML; adapt suggestions to the user's actual context rather than displaying the same three choices everywhere.
 
@@ -113,9 +169,13 @@ Display each option with its keyboard shortcut and let the user select it from t
 
 Selecting an option is the trigger for execution. Merely detecting a pause must not launch an agent task.
 
+Route global shortcuts and overlay clicks to the same background controller. Validate the selected ID against the currently displayed, valid suggestion set and its associated capture before dispatching assistance. Ignore dismissed, expired, stale, or duplicate selections. React sends selection events; it does not own the canonical suggestion set or assemble privileged model requests.
+
 ### 6. Execute the chosen prompt
 
 Retrieve relevant session context through Graphify and send it with the selected prompt and current captured material to the background agent. Show a compact progress state, support cancellation, and make failures recoverable.
+
+Bind execution to the capture associated with the validated selection, rather than silently substituting a different screen if the user moves on. Stream progress and answers through the controller to the overlay. Cancellation must abort the request where supported and suppress late events so a cancelled result cannot reopen the panel.
 
 For the MVP, execution means producing the requested summary, code example, or interactive quiz. Generating code does not imply automatically running it. Broader actions such as editing files, sending messages, or operating other applications require separately defined scope and authorization.
 
@@ -124,6 +184,23 @@ Treat text captured from websites and other applications as source material, not
 ### 7. Present and retain the result
 
 Display the result in a lightweight overlay or panel on the user's current screen. Reading a summary, viewing a code example, or taking a quiz must not require opening a new browser tab or switching to a separate application. Keep the underlying work accessible and return focus to it when the result is dismissed. Preserve the result with the session and update the working context. Avoid stealing focus unnecessarily.
+
+The background controller persists the selected action, result, source references, and completion status to SQLite. The model response itself is not a storage operation. Index committed interactions through the same preparation/indexing path as other session records, marking generated answers as assistant output. Record partial, failed, or cancelled interactions accurately rather than labelling them complete.
+
+## Failure and recovery behavior
+
+| Condition | Required behavior |
+| --- | --- |
+| Capture permission denied or unreadable material | Keep observation off when permission is missing; explain recovery or offer recapture. Do not claim access to uncaptured content. |
+| Persistence fails | Surface that the session is not being saved, stop accumulating new captures, and avoid indexing incomplete records. |
+| Graphify indexing fails | Retain canonical records, mark indexing pending or failed, and allow retry without duplicate entries. |
+| Retrieval fails or returns no useful history | Allow assistance using sufficient current captured material, clearly indicating unavailable historical context. Offer retry for failures. |
+| Suggestion generation fails or returns invalid output | Do not publish malformed suggestions; provide a quiet retry path while preserving cooldown behavior. |
+| Screen changes or a suggestion is dismissed | Invalidate stale suggestions and reject their shortcuts. Keep an already selected request tied to its original source. |
+| Model request fails or is cancelled | Preserve session context, mark partial output accurately, stop progress, and offer retry for failures. Suppress late events after cancellation. |
+| Shortcut registration fails | Surface the conflict and offer a different binding or clickable selection. |
+
+Session deletion must also invalidate queued indexing work so retries cannot recreate deleted context.
 
 ## Experience principles
 
@@ -173,6 +250,8 @@ The MVP is successful when a demonstrator can:
 Verify that the assistance loop can be completed without switching tabs or applications. Separately verify context continuity when the user chooses to switch to a related tab. Also check permission denial, insufficient captured content, suggestion cooldown, shortcut handling, cancellation, and a failed model request. Report what was tested and what remains unverified.
 
 Validate Graphify retrieval relevance, handling of empty or failed retrieval, and removal of indexed context when a session is deleted. Report measured token usage, including indexing overhead, and answer quality against the baseline; do not claim token savings without measurement.
+
+Verify persistence-before-indexing ordering, retry behavior without duplicate entries, and recovery from incomplete file/database writes. Check that dwell signals only generate suggestions; that clicks and shortcuts share selection validation; and that stale selections, duplicate events, cancelled responses, and deleted-session indexing retries cannot execute or restore unwanted work. Confirm that streamed results reach the overlay and completed interactions are saved with correct provenance and status.
 
 ## How to carry out the build
 
