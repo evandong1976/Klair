@@ -8,4 +8,6 @@ Klair is a background macOS assistant built with Electron, React and TypeScript.
 - **Flower code:** `design/reference/flower.ts` is a drop-in pixel-flower generator.
 - **Building it:** `BUILD_PROMPT.md` has the build instructions, milestones and definition of done. Progress is tracked in `docs/PROGRESS.md`.
 
-When the two disagree, look, layout, copy and shortcuts follow `design/DESIGN.md`; behaviour and architecture follow `MEGA_PROMPT.md`.
+- **Stack as built:** `README.md` and the scaffold in `src/` cover Electron + electron-vite, pnpm, Tailwind v4, AI SDK via OpenRouter, TigerData Postgres, a `node:sqlite` cache and the Graphify CLI. These replace the stack table in `MEGA_PROMPT.md`.
+
+When they disagree: look, layout, copy and shortcuts follow `design/DESIGN.md`; behaviour follows `MEGA_PROMPT.md`; technology and services follow the scaffold.
