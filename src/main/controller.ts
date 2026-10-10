@@ -1,3 +1,4 @@
+import { systemPreferences } from 'electron'
 import { existsSync } from 'fs'
 import { readdir, readFile, rm, unlink, writeFile } from 'fs/promises'
 import { join } from 'path'
@@ -305,17 +306,30 @@ async function refreshStats(): Promise<void> {
   }
 }
 
+// Consecutive failed captures. macOS sometimes hands back a blank frame even with
+// permission, so one bad frame is retried on the next tick rather than treated as a
+// lost permission. ~20 s of nothing but failures is worth stopping for.
+const MAX_CAPTURE_FAILURES = 5
+let captureFailures = 0
+
 function onCaptureError(err: Error): void {
   console.warn('capture error:', err.message)
-  const screenOk = lastHealth()?.checks.find((c) => c.id === 'screen')?.status === 'ok'
-  if (!screenOk || /denied|permission|nothing/i.test(err.message)) {
-    loop?.stop()
-    core.setObserving(false)
-    setState({ observing: 'paused', notice: { kind: 'screen-access' } })
-  }
+  // Ask macOS now; the health report may be from before the permission changed.
+  const granted =
+    process.platform !== 'darwin' || systemPreferences.getMediaAccessStatus('screen') === 'granted'
+  if (granted && ++captureFailures < MAX_CAPTURE_FAILURES) return
+  captureFailures = 0
+  loop?.stop()
+  core.setObserving(false)
+  // "blank": allowed in System Settings, yet every frame came back empty.
+  setState({
+    observing: 'paused',
+    notice: { kind: 'screen-access', detail: granted ? 'blank' : undefined }
+  })
 }
 
 async function onFrame(frame: Frame): Promise<void> {
+  captureFailures = 0
   const sid = sessionId
   if (!sid || !getState().saving) return
   const now = Date.now()

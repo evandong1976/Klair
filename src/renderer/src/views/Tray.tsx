@@ -76,7 +76,7 @@ export function TrayWindow(): React.JSX.Element | null {
 
   return (
     <MagicCard
-      className="rounded-[22px] h-screen box-border"
+      className="rounded-[16px] h-screen box-border"
       contentClassName="h-full flex flex-col overflow-hidden"
     >
       <header className="pt-[18px] px-[18px] pb-3.5 flex flex-col gap-3">

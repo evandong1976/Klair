@@ -55,7 +55,7 @@ export function StartWindow(): React.JSX.Element {
   const conn = ['tigerdata', 'openrouter', 'graphify'].map((id) => check(id)).filter(Boolean)
 
   return (
-    <div className="bg-ground min-h-screen box-border pt-10 px-9 pb-7 flex flex-col gap-5">
+    <div className="bg-ground/55 min-h-screen box-border pt-10 px-9 pb-7 flex flex-col gap-5">
       <div className="drag absolute top-0 left-0 right-0 h-8" />
       <div className="flex items-center gap-[18px]">
         <Flower res={30} cell={3} label="Klair" />

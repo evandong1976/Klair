@@ -74,15 +74,39 @@ export function NoticeCard({ notice }: { notice: Notice }): React.JSX.Element | 
             <Flower res={11} cell={3} paused label="Klair is not observing" />
             <span className="text-[15.5px] font-extrabold">Not observing</span>
           </div>
-          <span className="text-[13.5px] leading-[1.5] text-ink-2">
-            macOS hasn&apos;t let Klair record the screen yet, so it can&apos;t see anything. Turn
-            it on in Privacy &amp; Security, then come back.
-          </span>
-          <div className="flex justify-end">
-            <Button kind="primary" onClick={() => void klair.openSettings('screen')} keyHint="⌘↵">
-              Open System Settings
-            </Button>
-          </div>
+          {notice.detail === 'blank' ? (
+            <>
+              <span className="text-[13.5px] leading-[1.5] text-ink-2">
+                Screen recording is allowed, but macOS is still handing Klair blank screens. That
+                happens when the permission was changed while the app was open. Quit and reopen
+                Klair (when running from a terminal, quit and reopen the terminal too), then resume.
+              </span>
+              <div className="flex justify-end">
+                <Button
+                  kind="primary"
+                  onClick={() => void klair.dismissNotice().then(() => klair.resume())}
+                >
+                  Try again
+                </Button>
+              </div>
+            </>
+          ) : (
+            <>
+              <span className="text-[13.5px] leading-[1.5] text-ink-2">
+                macOS hasn&apos;t let Klair record the screen yet, so it can&apos;t see anything.
+                Turn it on in Privacy &amp; Security, then come back.
+              </span>
+              <div className="flex justify-end">
+                <Button
+                  kind="primary"
+                  onClick={() => void klair.openSettings('screen')}
+                  keyHint="⌘↵"
+                >
+                  Open System Settings
+                </Button>
+              </div>
+            </>
+          )}
         </div>
       )
     case 'fn-busy':

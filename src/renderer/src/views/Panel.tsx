@@ -136,7 +136,7 @@ export function PanelWindow(): React.JSX.Element | null {
 
   return (
     <div ref={rootRef} style={{ width }} className="p-0">
-      <section aria-label="Klair" className="rounded-[26px] text-ink">
+      <section aria-label="Klair" className="rounded-[16px] text-ink">
         <MagicCard contentClassName="p-5">
           <BlurFade key={view} className="flex flex-col gap-4">
             {state.notice && state.notice.kind !== 'no-history' && state.notice.kind !== 'stale' ? (

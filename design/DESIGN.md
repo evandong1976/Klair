@@ -76,7 +76,7 @@ Text contrast was chosen for ≥4.5:1 on white/glass; don't lighten the greys.
 
 ### Thick glass (panel backgrounds only)
 
-> **Superseded (2026-10-10):** the frosted glass and native macOS vibrancy were removed. A vibrancy layer is a square behind the CSS card, so its corners never matched the card's rounded ones, and the tint read as muddy. Containers are now **solid surfaces** (`--color-background` `#FFFDFC`, `--color-border` `#ECDCD8`) in fully transparent windows, built from Magic UI components in `src/renderer/src/components/magicui/`: Magic Card (panel and tray shells), Shimmer Button (primary), Ripple Button (secondary, danger, close), Border Beam (panel while working), Blur Fade (panel view changes) and Animated Shiny Text (loading labels). Colors, radii, type and shortcuts below still apply; ignore the glass recipe.
+> **Updated (2026-10-10):** frosted glass is back, as native macOS vibrancy on the panel, tray, Start and Sessions windows (`glass()` in `src/main/windows.ts`). The earlier attempt looked muddy because a Mac in Dark mode supplied the dark material; the app now forces light appearance. macOS rounds a vibrancy window at 16px, so the panel and tray shells use a **16px** radius (not 26px) to sit exactly on it. Shells are the Magic UI Magic Card in `src/renderer/src/components/magicui/` with a light translucent tint instead of a solid fill; the CSS recipe below is superseded by that component. Colors, type and shortcuts below still apply.
 
 Glass is for the **background of containers** (panels, pills, popovers, windows, state cards). Everything **inside** them — idea tiles, inputs, code, demos, buttons — is solid white so it stays crisp.
 

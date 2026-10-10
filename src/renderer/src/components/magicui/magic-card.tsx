@@ -2,9 +2,11 @@ import { useCallback, useEffect } from 'react'
 import { motion, useMotionTemplate, useMotionValue } from 'motion/react'
 import { cn } from '../../lib/utils'
 
-// Magic UI "Magic Card" (gradient mode): a solid surface whose border and a soft
+// Magic UI "Magic Card" (gradient mode): a glass surface whose border and a soft
 // spotlight follow the pointer. Adapted from magicui.design/r/magic-card: the orb
 // mode and next-themes are dropped, and `contentClassName` lays out the children.
+// The fill is a light translucent tint over the window's native vibrancy, so the
+// gradient border is a masked ring rather than a layer behind an opaque fill.
 
 interface MagicCardProps {
   children?: React.ReactNode
@@ -53,18 +55,21 @@ export function MagicCard({
         mouseY.set(e.clientY - rect.top)
       }}
       onPointerLeave={reset}
-      style={{
-        background: useMotionTemplate`
-          linear-gradient(var(--color-background) 0 0) padding-box,
-          radial-gradient(${gradientSize}px circle at ${mouseX}px ${mouseY}px,
-            ${gradientFrom},
-            ${gradientTo},
-            var(--color-border) 100%
-          ) border-box
-        `
-      }}
     >
-      <div className="bg-background absolute inset-px z-20 rounded-[inherit]" />
+      <motion.div
+        className="pointer-events-none absolute -inset-px z-10 rounded-[inherit] p-px"
+        style={{
+          background: useMotionTemplate`
+            radial-gradient(${gradientSize}px circle at ${mouseX}px ${mouseY}px,
+              ${gradientFrom},
+              ${gradientTo},
+              rgba(255, 255, 255, 0.8) 100%
+            )
+          `,
+          mask: 'linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0)'
+        }}
+      />
+      <div className="absolute inset-px z-20 rounded-[inherit] bg-[linear-gradient(180deg,rgba(255,255,255,0.46),rgba(255,244,242,0.28))] shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]" />
       <motion.div
         className="pointer-events-none absolute inset-px z-30 rounded-[inherit] opacity-0 transition-opacity duration-300 group-hover:opacity-100"
         style={{

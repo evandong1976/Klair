@@ -1,4 +1,4 @@
-import { app, BrowserWindow, screen, shell, type Rectangle } from 'electron'
+import { app, BrowserWindow, nativeTheme, screen, shell, type Rectangle } from 'electron'
 import { join } from 'path'
 import { is } from '@electron-toolkit/utils'
 import type { PanelView } from '../shared/types'
@@ -7,8 +7,9 @@ import type { PanelView } from '../shared/types'
 //   flower   transparent, click-through (except the nudge pill), non-focusable, top-right
 //   panel    focusable panel under the flower; takes focus while open
 //   start / sessions  normal windows; tray popover under the menu bar icon
-// Floating windows are fully transparent with no native vibrancy: a vibrancy layer is
-// a square behind the CSS card, so its corners never match the card's rounded ones.
+// Frosted glass is native macOS vibrancy (CSS backdrop-filter can't blur other apps).
+// macOS rounds a vibrancy window at 16px, so the panel and tray shells use that radius
+// to sit exactly on it. The flower window has no vibrancy: it is mostly empty space.
 // All Klair windows are excluded from screen capture (setContentProtection).
 
 const TOP = 10
@@ -25,6 +26,13 @@ let panelSize = { width: 460, height: 420 }
 let panelView: PanelView = 'closed'
 
 const isMac = process.platform === 'darwin'
+
+// Klair's palette is light-only. Without this, a Mac in Dark mode gives the windows
+// the dark vibrancy material, which turns the glass muddy under the light tint.
+nativeTheme.themeSource = 'light'
+
+const glass = (material: 'popover' | 'under-window'): Electron.BrowserWindowConstructorOptions =>
+  isMac ? { vibrancy: material, visualEffectState: 'active' } : {}
 
 function webPreferences(): Electron.WebPreferences {
   return { preload: join(__dirname, '../preload/index.js'), sandbox: false }
@@ -91,7 +99,8 @@ export function createPanelWindow(): BrowserWindow {
     resizable: false,
     fullscreenable: false,
     skipTaskbar: true,
-    hasShadow: true, // macOS draws it around the card's own rounded shape
+    hasShadow: true,
+    ...glass('popover'),
     show: false,
     webPreferences: webPreferences()
   })
@@ -157,7 +166,8 @@ function appWindow(
     ...opts,
     show: false,
     titleBarStyle: isMac ? 'hiddenInset' : 'default',
-    backgroundColor: '#FBF7F5',
+    backgroundColor: isMac ? '#00000000' : '#FBF7F5',
+    ...glass('under-window'),
     webPreferences: webPreferences()
   })
   win.setContentProtection(true)
@@ -207,6 +217,7 @@ export function toggleTrayWindow(anchor: Rectangle): void {
       skipTaskbar: true,
       show: false,
       hasShadow: true,
+      ...glass('popover'),
       webPreferences: webPreferences()
     })
     trayWin.setContentProtection(true)
