@@ -1,6 +1,44 @@
 # Build prompt: Klair MVP
 
 > Paste this into Claude Code at the root of the Klair repo, or say: **"Read BUILD_PROMPT.md and follow it."**
+>
+> **Resuming after another session stopped?** Say: **"Read BUILD_PROMPT.md and docs/PROGRESS.md, then continue from the Handoff section."**
+
+---
+
+## 0. Handoff protocol: follow it the whole time
+
+This build may stop at any moment (token limits, a crash, the user closing the session), with no warning and no chance to write a final report. So **never hold progress only in your head or your context**. Keep the repo in a state another AI can pick up cold.
+
+**Starting:**
+- Read `docs/PROGRESS.md` before anything else.
+- If it has a Handoff section, continue from **Next step** instead of starting over.
+- Run `git log --oneline -15` and `git status` to check the code matches what PROGRESS.md claims. If they disagree, trust the code and fix PROGRESS.md.
+
+**After every completed step:** a "step" is a few files or about 15–20 minutes of work.
+1. Update `docs/PROGRESS.md`, especially the **Handoff** section (template below).
+2. Commit code and PROGRESS.md together with a clear message.
+3. Leave work-in-progress commits typechecking where possible. If they don't, prefix the message with `WIP:` and say what's broken in the Handoff.
+
+**Before anything risky or long** (a big refactor, a long install or build, a native addon), commit and update the Handoff first.
+
+**If you get any signal you're running low** (a context or usage warning, the conversation being compacted, or the user saying so): stop feature work, write the Handoff in full, commit, and only then continue.
+
+**Handoff section template** (keep it at the top of `docs/PROGRESS.md`; overwrite it each time and keep it short):
+
+```markdown
+## Handoff (updated <date time>, by <session/model>)
+- **Milestone:** <n / name> — <% done>
+- **Just finished:** <1–3 bullets>
+- **In progress:** <file(s) + what's half-done, or "nothing">
+- **Next step:** <the single exact next action, specific enough to start immediately>
+- **Broken / failing:** <typecheck, lint, runtime errors, or "none">
+- **Decisions made this session:** <anything not yet in PLAN.md>
+- **Blocked on / questions for the user:** <or "none">
+- **How to verify current state:** <commands to run and what you should see>
+```
+
+Below the Handoff, keep the longer record: milestone checklist, health-check status, stubs and simulations, and a decisions log.
 
 ---
 
@@ -211,8 +249,8 @@ If several Claude Code sessions build in parallel, claim a milestone in `docs/PR
 
 ## 7. Working rules
 
-- Use **pnpm**. Run `pnpm typecheck` and `pnpm lint` before every commit. Commit after each milestone. Don't push or open PRs unless asked.
-- Keep `docs/PROGRESS.md` current: what works, what's stubbed or simulated (labelled), health-check status, and what's next, so another session can pick up cold.
+- Use **pnpm**. Run `pnpm typecheck` and `pnpm lint` before every commit. Commit after every step (§0), not just every milestone. Don't push or open PRs unless asked.
+- Follow the handoff protocol in §0 at all times. `docs/PROGRESS.md` is how the next session continues if this one stops.
 - Before marking a screen done, check it against its `.dc.html`. If something can't be built as drawn, note it and propose the nearest alternative; don't silently restyle.
 - Note every native module (it needs an Electron rebuild) and every new env var (add it to `.env.example`).
 
