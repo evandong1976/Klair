@@ -4,7 +4,28 @@
 
 Act as a product engineer and interaction designer building Claire, a background AI assistant that helps users maintain momentum while working on their computer. Turn the product vision below into a focused, working hackathon MVP.
 
-Use this document as the source of truth for the product. Distinguish established requirements from implementation choices and future ideas. Inspect the existing project before choosing tools or changing code. If the project is empty, propose a practical stack and explain the choice briefly before proceeding. Ask only for decisions that materially block implementation; make reasonable, reversible choices otherwise.
+Use this document as the source of truth for the product. Distinguish established requirements from implementation choices and future ideas. Inspect the existing project before changing code. Use Graphify as the user-selected context retrieval technology and the proposed stack below as the starting architecture. Ask only for decisions that materially block implementation; make reasonable, reversible choices otherwise.
+
+## Technology stack and rationale
+
+Graphify is the chosen context retrieval technology. The remaining stack is the proposed implementation baseline, assuming a macOS-first hackathon MVP and a team comfortable with JavaScript and TypeScript.
+
+| Layer | Technology | Rationale |
+| --- | --- | --- |
+| Desktop application | Electron | Provides desktop capture, global shortcuts, and configurable overlay windows in one JavaScript stack. Accept its larger memory footprint in exchange for fast MVP development. |
+| Interface | React + TypeScript + plain CSS | Supports compact suggestions, streaming answers, and interactive quizzes with shared types for context and session data. |
+| Screen observation | Electron desktopCapturer + local image-change detection | Periodic screenshots and deduplication limit redundant processing. Capture only during an authorized active session. |
+| Shortcuts and overlays | Electron globalShortcut + BrowserWindow | Lets users select help while working in another app and read the result in place. Validate focus restoration, shortcut conflicts, and fullscreen behavior early. |
+| Context retrieval | Graphify | Organizes and retrieves relevant context from captured material and previous interactions. The goal is to reduce token usage by supplying focused context instead of the entire session while preserving continuity across related screens and tabs. Measure actual savings and answer quality. |
+| AI integration | Vercel AI SDK + a vision-capable Claude model | Supports screenshot interpretation, structured suggestions, and streamed answers. Select the specific model using demo-screen quality and latency tests. |
+| Session persistence | SQLite + a local screenshot directory | Stores sessions, captured context, source references, selected actions, and results without a database server. Graphify handles retrieval; SQLite retains the canonical session records. |
+| Background control | A small TypeScript state machine | Makes observation, dwell detection, cooldowns, dismissal, generation, cancellation, and failures explicit and predictable. |
+
+Keep capture, storage, and model requests in the desktop background layer, connected to the React interface through a narrow API. A locally configured developer API key is sufficient for the demo; distributing an app that uses a company-owned provider key requires an authenticated backend rather than embedding that key in the app.
+
+Verify the intended Graphify package or repository and its supported ingestion, retrieval, persistence, and deletion interfaces before implementing the integration. The choice of Graphify is established; its exact integration API is not specified by this brief. Do not assume it can ingest screenshots directly: convert captures into supported source material as needed and preserve timestamps and source references.
+
+Screenshots supply visible context, not reliable full-page content or exact browser tab metadata. A browser extension for authorized full-page extraction is a possible later addition. Cloud session sync and a general-purpose agent framework are outside the initial MVP.
 
 ## Product purpose
 
@@ -72,6 +93,10 @@ Convert captured information into a useful representation of what the user is do
 
 Separate observed facts from inferred intent. Connect relevant tab changes without assuming every tab belongs to the same task. Avoid sending the entire raw session to the model for every request.
 
+Use Graphify to index supported context derived from captures and prior interactions, then retrieve material relevant to the current screen and selected prompt. Combine the retrieved material with the current capture and explicit user request within a bounded context budget. Keep canonical session records in SQLite and maintain references between those records and Graphify's indexed material.
+
+Reducing token usage while retaining useful context is a design goal, not an assumed benchmark result. Compare model-input token usage and answer quality against a full-session baseline on the same demo tasks, and account separately for any model usage required to build or update the retrieval index.
+
 ### 3. Detect a possible blocker
 
 Start with a simple, configurable dwell-time signal for the hackathon MVP. Keep thresholds tunable rather than embedding an unvalidated universal duration. Add a cooldown and dismissal behavior so a stationary screen does not cause repeated interruptions.
@@ -90,7 +115,7 @@ Selecting an option is the trigger for execution. Merely detecting a pause must 
 
 ### 6. Execute the chosen prompt
 
-Send the selected prompt and relevant context to the background agent. Show a compact progress state, support cancellation, and make failures recoverable.
+Retrieve relevant session context through Graphify and send it with the selected prompt and current captured material to the background agent. Show a compact progress state, support cancellation, and make failures recoverable.
 
 For the MVP, execution means producing the requested summary, code example, or interactive quiz. Generating code does not imply automatically running it. Broader actions such as editing files, sending messages, or operating other applications require separately defined scope and authorization.
 
@@ -113,7 +138,7 @@ Display the result in a lightweight overlay or panel on the user's current scree
 
 Because screen capture can contain sensitive information, include a clear start/stop or pause control and a visible recording indicator. Define where recordings and context are stored, how long they are retained, and how the user deletes a session. Make any transmission to an AI provider clear. Do not capture before the required user permission is granted.
 
-These are implementation requirements for a usable screen-observing app; specific storage technology and retention defaults remain design choices.
+Use SQLite and the local screenshot directory for session persistence as proposed above. Apply session deletion and retention rules to associated Graphify data as well. Determine and document where the chosen Graphify integration stores or transmits data; do not assume that all processing is local. Retention defaults remain an implementation choice.
 
 ## MVP scope
 
@@ -125,11 +150,11 @@ Build enough to demonstrate this loop on a real screen without requiring a tab s
 
 Avoid expanding the hackathon scope into a general-purpose autonomous desktop agent before this core loop works.
 
-## Future exploration: context graph
+## Future exploration: graph neural networks
 
 A possible future feature uses a graph neural network to build a graph of the user's work and help construct the agent's context window. The graph could connect topics, pages, tasks, and prior actions as the session develops.
 
-This is an exploratory idea, not a required MVP dependency. Begin with a simpler context representation. Do not describe a basic graph or linked session history as a graph neural network unless a GNN is actually implemented.
+A custom graph neural network is an exploratory idea, not a required MVP dependency. Graphify-based context retrieval is part of the MVP architecture. Do not describe Graphify integration, a basic graph, or linked session history as a graph neural network unless a GNN is actually implemented and verified.
 
 ## Acceptance criteria
 
@@ -143,15 +168,18 @@ The MVP is successful when a demonstrator can:
 6. Receive an agent-generated result grounded in the captured material in an overlay or panel on the same screen.
 7. Dismiss the result and resume work on the article without a tab or app switch, with the selected action and result retained in the session.
 8. Dismiss suggestions or pause observation without fighting the interface.
+9. Retrieve relevant earlier context through Graphify when switching to a related tab, with source references retained.
 
 Verify that the assistance loop can be completed without switching tabs or applications. Separately verify context continuity when the user chooses to switch to a related tab. Also check permission denial, insufficient captured content, suggestion cooldown, shortcut handling, cancellation, and a failed model request. Report what was tested and what remains unverified.
+
+Validate Graphify retrieval relevance, handling of empty or failed retrieval, and removal of indexed context when a session is deleted. Report measured token usage, including indexing overhead, and answer quality against the baseline; do not claim token savings without measurement.
 
 ## How to carry out the build
 
 1. Inspect the repository and identify existing implementation and project instructions.
-2. Briefly state the proposed architecture, target platform, and any assumptions.
+2. Confirm the proposed architecture, target platform, and intended Graphify package or repository; verify its integration interfaces.
 3. Build the smallest working vertical slice of the complete pipeline.
-4. Add session persistence and context continuity across tab changes.
+4. Add SQLite session persistence and Graphify context retrieval to preserve continuity across related tab changes.
 5. Refine suggestion relevance, keyboard selection, and in-place result presentation so receiving help requires no tab switch.
 6. Validate the happy path with the ML article scenario.
 7. Document setup, required permissions, configuration, and demo steps.
