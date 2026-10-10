@@ -1,13 +1,16 @@
 import type { Notice } from '../../../shared/types'
 import { Flower } from '../components/Flower'
 import { Button } from '../components/ui'
-import { klair } from '../lib/useKlair'
+import { klair, useKlairState } from '../lib/useKlair'
+import { prettyAccel } from '../../../shared/keys'
 
 // The approved copy for every failure state (design/canvas/States.dc.html),
 // wired to the matching failure from the brief's table.
 
 export function NoticeCard({ notice }: { notice: Notice }): React.JSX.Element | null {
   const dismiss = (): void => void klair.dismissNotice()
+  const s = useKlairState()
+  const openKey = s ? prettyAccel(s.toggleKey) : '⌃⌥K'
   const card = 'rounded-[20px] bg-white/70 border border-white p-4 flex flex-col gap-2.5'
   switch (notice.kind) {
     case 'no-history':
@@ -88,10 +91,10 @@ export function NoticeCard({ notice }: { notice: Notice }): React.JSX.Element | 
           <span className="text-[15.5px] font-extrabold">macOS is using the fn key</span>
           <span className="text-[13.5px] leading-[1.5] text-ink-2">
             It&apos;s set to switch input or start dictation. Set &quot;Press fn key to&quot; Do
-            Nothing in Keyboard settings, or use ⌃⌥K instead.
+            Nothing in Keyboard settings, or use {openKey} instead.
           </span>
           <div className="flex justify-end gap-2">
-            <Button onClick={dismiss}>Use ⌃⌥K instead</Button>
+            <Button onClick={dismiss}>{`Use ${openKey} instead`}</Button>
             <Button kind="primary" onClick={() => void klair.openSettings('keyboard')} keyHint="⌘,">
               Settings
             </Button>

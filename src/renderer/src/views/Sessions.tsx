@@ -109,7 +109,7 @@ export function SessionsWindow(): React.JSX.Element {
   const maxSecs = Math.max(1, ...(detail?.insights.byTopic.map((r) => r.seconds) ?? [1]))
 
   return (
-    <div className="glass-flat min-h-screen box-border flex flex-wrap items-stretch">
+    <div className="bg-ground min-h-screen box-border flex flex-wrap items-stretch">
       <div className="drag fixed top-0 left-0 right-0 h-8 z-10" />
       <nav
         aria-label="Sessions"

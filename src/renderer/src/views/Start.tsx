@@ -4,6 +4,7 @@ import { Flower } from '../components/Flower'
 import { Button, PixelLabel } from '../components/ui'
 import { isMod, klair, useKlairState } from '../lib/useKlair'
 import { HealthRow } from './HealthRow'
+import { prettyAccel } from '../../../shared/keys'
 
 // Start a session (Start.dc.html) + connection health (BUILD_PROMPT §4.1).
 // Privacy copy follows BUILD_PROMPT §2 (TigerData), corrected so it's literally true.
@@ -54,7 +55,7 @@ export function StartWindow(): React.JSX.Element {
   const conn = ['tigerdata', 'openrouter', 'graphify'].map((id) => check(id)).filter(Boolean)
 
   return (
-    <div className="glass-flat min-h-screen box-border pt-10 px-9 pb-7 flex flex-col gap-5">
+    <div className="bg-ground min-h-screen box-border pt-10 px-9 pb-7 flex flex-col gap-5">
       <div className="drag absolute top-0 left-0 right-0 h-8" />
       <div className="flex items-center gap-[18px]">
         <Flower res={30} cell={3} label="Klair" />
@@ -67,7 +68,8 @@ export function StartWindow(): React.JSX.Element {
       </div>
       <p className="m-0 text-[15px] leading-[1.5] text-ink-2 text-pretty">
         Klair watches your screen while a session is on. When you pause, the flower offers ideas.
-        Tap fn (or ⌃⌥K) to open it, then ⌘1, ⌘2 or ⌘3 to pick. Nothing runs until you do.
+        Tap fn (or {state ? prettyAccel(state.toggleKey) : '⌃⌥K'}) to open it, then ⌘1, ⌘2 or ⌘3 to
+        pick. Nothing runs until you do.
       </p>
 
       <div className="flex flex-col gap-2">

@@ -1,5 +1,6 @@
 import { BrowserWindow } from 'electron'
 import { STATE_CHANNEL, type FlowerMode, type KlairState } from '../shared/types'
+import { cache } from './cache'
 import { config } from './config'
 
 // The single source of truth the renderer windows display. Only the main process
@@ -17,6 +18,7 @@ let state: KlairState = {
   notice: null,
   quietUntil: null,
   dwellMs: config.dwellMs,
+  toggleKey: cache.get('toggleKey') ?? config.fallbackKeys.toggle,
   lastAnswerTitle: null,
   retentionDays: config.retentionDays,
   stats: { captures: 0, answers: 0, tabs: 0 }

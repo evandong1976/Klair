@@ -30,7 +30,6 @@ export const config = {
   retrievalBudget: num('RETRIEVAL_BUDGET', 1500),
 
   activeWindow: pick('ACTIVE_WINDOW') === 'applescript',
-  vibrancy: pick('VIBRANCY') !== 'off',
   /** Accelerators used until the native fn addon is available (or when fn is busy). */
   fallbackKeys: {
     toggle: pick('TOGGLE_KEY') ?? 'Control+Alt+K',

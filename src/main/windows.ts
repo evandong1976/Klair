@@ -2,12 +2,13 @@ import { app, BrowserWindow, screen, shell, type Rectangle } from 'electron'
 import { join } from 'path'
 import { is } from '@electron-toolkit/utils'
 import type { PanelView } from '../shared/types'
-import { config } from './config'
 
 // Window plan (DESIGN.md §7):
 //   flower   transparent, click-through (except the nudge pill), non-focusable, top-right
-//   panel    focusable glass panel under the flower; takes focus while open
+//   panel    focusable panel under the flower; takes focus while open
 //   start / sessions  normal windows; tray popover under the menu bar icon
+// Floating windows are fully transparent with no native vibrancy: a vibrancy layer is
+// a square behind the CSS card, so its corners never match the card's rounded ones.
 // All Klair windows are excluded from screen capture (setContentProtection).
 
 const TOP = 10
@@ -90,11 +91,8 @@ export function createPanelWindow(): BrowserWindow {
     resizable: false,
     fullscreenable: false,
     skipTaskbar: true,
-    hasShadow: false,
+    hasShadow: true, // macOS draws it around the card's own rounded shape
     show: false,
-    ...(isMac && config.vibrancy
-      ? { vibrancy: 'hud' as const, visualEffectState: 'active' as const }
-      : {}),
     webPreferences: webPreferences()
   })
   floatEverywhere(panel, 'floating')
@@ -115,6 +113,7 @@ function positionPanel(): void {
     width: Math.round(panelSize.width),
     height: Math.round(height)
   })
+  panel.invalidateShadow()
 }
 
 export function resizePanel(width: number, height: number): void {
@@ -158,11 +157,7 @@ function appWindow(
     ...opts,
     show: false,
     titleBarStyle: isMac ? 'hiddenInset' : 'default',
-    transparent: isMac && config.vibrancy,
-    backgroundColor: isMac && config.vibrancy ? '#00000000' : '#FBF7F5',
-    ...(isMac && config.vibrancy
-      ? { vibrancy: 'under-window' as const, visualEffectState: 'active' as const }
-      : {}),
+    backgroundColor: '#FBF7F5',
     webPreferences: webPreferences()
   })
   win.setContentProtection(true)
@@ -212,9 +207,6 @@ export function toggleTrayWindow(anchor: Rectangle): void {
       skipTaskbar: true,
       show: false,
       hasShadow: true,
-      ...(isMac && config.vibrancy
-        ? { vibrancy: 'popover' as const, visualEffectState: 'active' as const }
-        : {}),
       webPreferences: webPreferences()
     })
     trayWin.setContentProtection(true)

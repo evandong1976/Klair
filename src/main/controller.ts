@@ -22,7 +22,7 @@ import { makeVisionNote, writeNoteFile, type VisionNote } from './notes'
 import { notesDir, sessionDir, shotsDir } from './paths'
 import { retrieve } from './retrieve'
 import { getState, setState } from './state'
-import { generateSuggestions } from './suggest'
+import { suggestionsFromNote } from './suggest'
 import * as windows from './windows'
 
 // The background controller: owns the session, the suggestion set, execution state
@@ -399,16 +399,7 @@ async function doSuggest(generationId: number, captureId: number): Promise<void>
     const note = await (notePromises.get(captureId) ?? Promise.resolve(null))
     const mem = captures.get(captureId)
     if (!note || !mem) throw new Error('No note for this screen yet')
-    const retrieved = await retrieve(note.topic, { sessionId: sid, excludeCaptureId: captureId })
-    const set = await generateSuggestions({
-      sessionId: sid,
-      captureId,
-      generationId,
-      note: note.note,
-      topic: note.topic,
-      capturedAt: mem.capturedAt,
-      retrieved
-    })
+    const set = suggestionsFromNote({ captureId, generationId, note, capturedAt: mem.capturedAt })
     apply(core.onSuggestions(generationId, set))
   } catch (err) {
     console.warn('suggestions failed:', (err as Error).message)
@@ -536,9 +527,11 @@ async function execute(run: {
   windows.setPanelView('answer')
   windows.showPanel()
 
+  // The action row is written alongside the model call rather than ahead of it.
   let actionId: number | null = null
+  let actionSaved: Promise<number | null> = Promise.resolve(null)
   if (sid) {
-    actionId = await db
+    actionSaved = db
       .insertAction({
         sessionId: sid,
         captureId: run.captureId,
@@ -588,7 +581,10 @@ async function execute(run: {
       sessionId: sid ?? 0,
       task: run.task,
       kind: run.kind,
-      png: img.png,
+      title: base.title,
+      // The note already describes the screen; attaching the image as well delays the
+      // first word by several seconds, so it is only sent when there is no note.
+      png: img.note ? null : img.png,
       note: img.note,
       topic: img.topic,
       retrieved,
@@ -610,6 +606,7 @@ async function execute(run: {
         })
       }
     })
+    actionId = await actionSaved
     if (!live()) return
     lastOutput = result.output
     lastAnswerCaptureId = run.captureId
@@ -673,6 +670,7 @@ async function execute(run: {
         })
       }
     }
+    actionId ??= await actionSaved
     if (actionId) {
       const partial = getState().answer
       await db

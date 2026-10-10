@@ -1,5 +1,7 @@
 import type { ReactNode } from 'react'
 import type { Provenance } from '../../../shared/types'
+import { RippleButton } from './magicui/ripple-button'
+import { ShimmerButton } from './magicui/shimmer-button'
 
 // Small shared pieces from the design: keycaps, buttons, labels, chips.
 
@@ -62,23 +64,38 @@ export function Button({
   title?: string
 }): React.JSX.Element {
   const base =
-    'h-10 rounded-[12px] flex items-center justify-center gap-2 text-[13.5px] cursor-pointer disabled:cursor-not-allowed disabled:opacity-45 transition-colors'
-  const styles = {
-    primary: 'bg-ink text-on-dark font-bold border-0 hover:bg-black',
-    secondary: 'bg-white text-ink font-semibold border border-line-input hover:bg-blush-3',
-    danger: 'bg-white text-danger font-semibold border border-danger-line hover:bg-blush-2'
-  }[kind]
+    'h-10 rounded-[12px] gap-2 text-[13.5px] disabled:cursor-not-allowed disabled:opacity-45'
+  const pad = keyHint ? 'pl-4 pr-2 py-0' : 'px-4 py-0'
+  if (kind === 'primary') {
+    return (
+      <ShimmerButton
+        title={title}
+        onClick={onClick}
+        disabled={disabled}
+        background="#2d3128"
+        shimmerColor="#fce4e2"
+        borderRadius="12px"
+        className={`${base} ${pad} font-bold text-on-dark ${className}`}
+      >
+        {children}
+        {keyHint ? <Key variant="dark">{keyHint}</Key> : null}
+      </ShimmerButton>
+    )
+  }
   return (
-    <button
-      type="button"
+    <RippleButton
       title={title}
       onClick={onClick}
       disabled={disabled}
-      className={`${base} ${styles} ${keyHint ? 'pl-4 pr-2' : 'px-4'} ${className}`}
+      className={`${base} ${pad} font-semibold transition-colors ${
+        kind === 'danger'
+          ? 'text-danger border-danger-line hover:bg-blush-2'
+          : 'text-ink border-line-input hover:bg-blush-3'
+      } ${className}`}
     >
       {children}
-      {keyHint ? <Key variant={kind === 'primary' ? 'dark' : 'inline'}>{keyHint}</Key> : null}
-    </button>
+      {keyHint ? <Key variant="inline">{keyHint}</Key> : null}
+    </RippleButton>
   )
 }
 
@@ -106,11 +123,10 @@ export function CloseButton({
   label?: string
 }): React.JSX.Element {
   return (
-    <button
-      type="button"
+    <RippleButton
       aria-label={label}
       onClick={onClick}
-      className="h-9 pl-2.5 pr-2 rounded-[12px] border border-line-input bg-white text-ink flex items-center gap-2 cursor-pointer hover:bg-blush-3"
+      className="h-9 pl-2.5 pr-2 py-0 rounded-[12px] border-line-input text-ink transition-colors hover:bg-blush-3"
     >
       <svg width="11" height="11" viewBox="0 0 12 12" aria-hidden="true">
         <path
@@ -121,7 +137,7 @@ export function CloseButton({
         />
       </svg>
       <Key variant="inline">esc</Key>
-    </button>
+    </RippleButton>
   )
 }
 

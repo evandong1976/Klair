@@ -45,7 +45,9 @@ app.whenReady().then(async () => {
     quiet: () => c.toggleQuiet()
   })
   if (!keys.fn && !keys.fallback.toggle) {
-    setState({ notice: { kind: 'fn-busy', detail: 'Neither fn nor ⌃⌥K could be registered' } })
+    setState({
+      notice: { kind: 'fn-busy', detail: 'Neither fn nor the Klair shortcut could be registered' }
+    })
   }
 
   windows.openStart()

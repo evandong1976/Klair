@@ -3,12 +3,13 @@ import { Flower } from '../components/Flower'
 import { useBloom } from '../lib/useBloom'
 import { Key } from '../components/ui'
 import { klair, useKlairState } from '../lib/useKlair'
+import { prettyAccel } from '../../../shared/keys'
 
-// Top-right corner (Main.dc.html): the see-through flower, plus a glass pill when
+// Top-right corner (Main.dc.html): the see-through flower, plus a pill when
 // there's something to say. The window is click-through except over the pill.
 
 const PILL =
-  'glass flex items-center gap-2.5 h-[42px] pl-4 pr-2 rounded-full text-[14px] font-bold text-ink cursor-pointer'
+  'surface flex items-center gap-2.5 h-[42px] pl-4 pr-2 rounded-full text-[14px] font-bold text-ink cursor-pointer'
 
 export function FlowerWindow(): React.JSX.Element | null {
   const s = useKlairState()
@@ -16,7 +17,7 @@ export function FlowerWindow(): React.JSX.Element | null {
   useEffect(() => {
     void klair.getHealth().then((h) => {
       const fn = h.checks.find((c) => c.id === 'fnkey')
-      setOpenKey(fn?.status === 'ok' ? 'fn' : '⌃⌥K')
+      setOpenKey(fn?.status === 'ok' ? 'fn' : '')
     })
   }, [])
 
@@ -60,7 +61,7 @@ export function FlowerWindow(): React.JSX.Element | null {
       )
     } else if (s.notice?.kind === 'stale') {
       pill = (
-        <span className="glass flex items-center h-[42px] px-4 rounded-full text-[13.5px] font-semibold text-ink-2 opacity-80">
+        <span className="surface flex items-center h-[42px] px-4 rounded-full text-[13.5px] font-semibold text-ink-2 opacity-80">
           Those ideas were for the last screen
         </span>
       )
@@ -84,7 +85,7 @@ export function FlowerWindow(): React.JSX.Element | null {
       pill = (
         <button type="button" {...hover} onClick={() => void klair.openPanel()} className={PILL}>
           {`${s.suggestions.ideas.length} ideas for this section`}
-          <Key className="text-[11.5px] px-2 py-[5px]">{openKey}</Key>
+          <Key className="text-[11.5px] px-2 py-[5px]">{openKey || prettyAccel(s.toggleKey)}</Key>
         </button>
       )
     }

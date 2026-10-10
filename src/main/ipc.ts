@@ -1,4 +1,4 @@
-import { ipcMain, shell } from 'electron'
+import { desktopCapturer, ipcMain, shell } from 'electron'
 import {
   invokeChannel,
   type KlairApi,
@@ -8,6 +8,7 @@ import {
 import * as c from './controller'
 import { listSessions } from './db'
 import { lastHealth, runHealth } from './health'
+import { setToggleKey } from './shortcuts'
 import { getState } from './state'
 import * as windows from './windows'
 
@@ -51,9 +52,18 @@ const handlers: Handlers = {
   getSessionDetail: (id) => c.sessionDetail(Number(id)).catch(() => null),
   setDwellMs: async (ms) => c.setDwellMs(Math.max(10_000, Number(ms))),
   setQuiet: async (on) => c.setQuiet(Boolean(on)),
+  setToggleKey: async (accel) => setToggleKey(String(accel)),
   getHealth: async () => lastHealth() ?? runHealth(),
   runHealth: () => runHealth(),
   openSettings: async (pane) => {
+    // macOS only lists an app under Screen Recording after it has tried to capture,
+    // and checking the status doesn't count. One throwaway capture registers Klair
+    // (and shows the system prompt the first time).
+    if (pane === 'screen') {
+      await desktopCapturer
+        .getSources({ types: ['screen'], thumbnailSize: { width: 1, height: 1 } })
+        .catch(() => [])
+    }
     const url = SETTINGS_URLS[pane]
     if (url) await shell.openExternal(url)
   },

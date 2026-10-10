@@ -100,6 +100,8 @@ export interface KlairState {
   notice: Notice | null
   quietUntil: number | null
   dwellMs: number
+  /** Electron accelerator that opens or closes Klair, e.g. "Control+Alt+K". */
+  toggleKey: string
   lastAnswerTitle: string | null
   retentionDays: number
   stats: { captures: number; answers: number; tabs: number }
@@ -175,6 +177,8 @@ export interface KlairApi {
   getSessionDetail(id: number): Promise<SessionDetail | null>
   setDwellMs(ms: number): Promise<void>
   setQuiet(on: boolean): Promise<void>
+  /** Resolves false if the shortcut is invalid or another app already owns it. */
+  setToggleKey(accel: string): Promise<boolean>
 
   getHealth(): Promise<HealthReport>
   runHealth(): Promise<HealthReport>
@@ -209,6 +213,7 @@ export const KLAIR_INVOKE_METHODS: KlairInvokeMethod[] = [
   'getSessionDetail',
   'setDwellMs',
   'setQuiet',
+  'setToggleKey',
   'getHealth',
   'runHealth',
   'openSettings',

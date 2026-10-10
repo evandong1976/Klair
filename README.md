@@ -48,7 +48,14 @@ pnpm dev
 | Input Monitoring | The fn key (optional) | System Settings › Privacy & Security › Input Monitoring |
 | Automation | Front app, window title, browser URL (`KLAIR_ACTIVE_WINDOW=applescript`, optional) | Prompted on first use |
 
-In `pnpm dev`, these permissions are granted to **Electron** itself. A packaged build (`com.klair.app`) needs its own grants. Restart the app after granting Screen Recording.
+In `pnpm dev`, macOS attributes these permissions to **Electron** or to the terminal that launched it, so "Klair" never appears in System Settings. To get a real **Klair** entry, run the app as its own bundle:
+
+```bash
+ln -s "$PWD/.env" ~/Library/Application\ Support/klair/.env   # once: the app starts outside the repo
+pnpm app                                                      # builds, signs and opens dist/mac-arm64/Klair.app
+```
+
+Quit `pnpm dev` first (only one Klair runs at a time). Click **Allow** in the Start window to make macOS list Klair, switch it on, then quit and reopen Klair. `pnpm app` signs the build with a local self-signed certificate (`scripts/sign-dev.sh`, kept in its own `klair-dev` keychain), so the grant survives rebuilds. If System Settings shows Klair as allowed but the app says it isn't, the entry is stale: run `tccutil reset ScreenCapture com.klair.app`, then allow it again.
 
 ## Demo script (from the brief)
 

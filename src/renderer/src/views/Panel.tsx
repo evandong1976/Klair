@@ -1,12 +1,16 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { AnswerState, KlairState, SuggestionSet } from '../../../shared/types'
 import { Block } from '../components/blocks'
+import { AnimatedShinyText } from '../components/magicui/animated-shiny-text'
+import { BlurFade } from '../components/magicui/blur-fade'
+import { BorderBeam } from '../components/magicui/border-beam'
+import { MagicCard } from '../components/magicui/magic-card'
 import { Button, CloseButton, Key, PixelLabel, PixelProgress, SourceChips } from '../components/ui'
 import { isMod, klair, useKlairState } from '../lib/useKlair'
 import { NoticeCard } from './NoticeCard'
 import { ShortcutsView } from './Shortcuts'
 
-// The glass panel under the flower: ideas (Open.dc.html), answers (Result.dc.html,
+// The panel under the flower: ideas (Open.dc.html), answers (Result.dc.html,
 // Quiz.dc.html) and the ⌘/ sheet. ⌘ keys work only here, while the panel has focus.
 
 const WIDTH = { ideas: 460, answer: 572, quiz: 490, shortcuts: 572 } as const
@@ -124,23 +128,35 @@ export function PanelWindow(): React.JSX.Element | null {
   }, [state])
 
   if (!state) return null
+  // The beam circles the panel while Klair is reading the screen or writing an answer.
+  const busy =
+    view === 'answer'
+      ? state.answer?.status === 'pending' || state.answer?.status === 'streaming'
+      : view === 'ideas' && !!state.session && !state.suggestions
 
   return (
     <div ref={rootRef} style={{ width }} className="p-0">
-      <section
-        aria-label="Klair"
-        className="glass-flat rounded-[26px] p-5 flex flex-col gap-4 text-ink"
-      >
-        {state.notice && state.notice.kind !== 'no-history' && state.notice.kind !== 'stale' ? (
-          <NoticeCard notice={state.notice} />
-        ) : null}
-        {view === 'shortcuts' ? (
-          <ShortcutsView />
-        ) : view === 'answer' && state.answer ? (
-          <AnswerView state={state} answer={state.answer} askRef={askRef} />
-        ) : (
-          <IdeasView state={state} set={state.suggestions} askRef={askRef} tileRefs={tileRefs} />
-        )}
+      <section aria-label="Klair" className="rounded-[26px] text-ink">
+        <MagicCard contentClassName="p-5">
+          <BlurFade key={view} className="flex flex-col gap-4">
+            {state.notice && state.notice.kind !== 'no-history' && state.notice.kind !== 'stale' ? (
+              <NoticeCard notice={state.notice} />
+            ) : null}
+            {view === 'shortcuts' ? (
+              <ShortcutsView />
+            ) : view === 'answer' && state.answer ? (
+              <AnswerView state={state} answer={state.answer} askRef={askRef} />
+            ) : (
+              <IdeasView
+                state={state}
+                set={state.suggestions}
+                askRef={askRef}
+                tileRefs={tileRefs}
+              />
+            )}
+          </BlurFade>
+          {busy ? <BorderBeam /> : null}
+        </MagicCard>
       </section>
     </div>
   )
@@ -260,7 +276,9 @@ function IdeasView({
       ) : (
         <div className="flex flex-col gap-3">
           <PixelLabel>Where you are</PixelLabel>
-          <span className="text-[15px] font-bold">Reading your screen…</span>
+          <AnimatedShinyText className="text-[15px] font-bold">
+            Reading your screen…
+          </AnimatedShinyText>
           <PixelProgress />
           <span className="text-[13px] text-ink-3">
             Klair is looking at what&apos;s on screen and what you read earlier.
@@ -367,13 +385,13 @@ function AnswerView({
 
       {working && answer.blocks.length === 0 ? (
         <div className="rounded-[20px] bg-white/70 border border-white p-4 flex flex-col gap-3">
-          <span className="text-[15.5px] font-extrabold">
+          <AnimatedShinyText className="text-[15.5px] font-extrabold">
             {answer.kind === 'quiz'
               ? 'Writing your quiz…'
               : answer.kind === 'code'
                 ? 'Building a live demo…'
                 : 'Working on it…'}
-          </span>
+          </AnimatedShinyText>
           <PixelProgress />
           <div className="flex justify-end">
             <Button onClick={() => void klair.cancel()} keyHint="esc">

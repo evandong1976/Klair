@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react'
 import { Flower } from '../components/Flower'
+import { MagicCard } from '../components/magicui/magic-card'
 import { Button, Key, PixelLabel } from '../components/ui'
 import { isMod, klair, minutes, timeLabel, useKlairState } from '../lib/useKlair'
+import { accelFromEvent, prettyAccel } from '../../../shared/keys'
 
 // Menu bar popover (Tray.dc.html).
 const DWELL = [
@@ -17,6 +19,31 @@ export function TrayWindow(): React.JSX.Element | null {
     const t = setInterval(() => setNow(Date.now()), 1000)
     return () => clearInterval(t)
   }, [])
+
+  // Recording a new "open Klair" shortcut: the next key combination is the binding.
+  const [recording, setRecording] = useState(false)
+  const [keyError, setKeyError] = useState('')
+  useEffect(() => {
+    if (!recording) return
+    const onKey = (e: KeyboardEvent): void => {
+      e.preventDefault()
+      e.stopImmediatePropagation()
+      if (e.key === 'Escape') return setRecording(false)
+      const accel = accelFromEvent(e)
+      if (!accel) {
+        // Still holding modifiers, or a key that can't be global on its own.
+        if (!['Control', 'Alt', 'Shift', 'Meta'].includes(e.key))
+          setKeyError('Add ⌃, ⌥ or ⌘ to that key')
+        return
+      }
+      setRecording(false)
+      void klair.setToggleKey(accel).then((ok) => {
+        setKeyError(ok ? '' : `${prettyAccel(accel)} is taken by macOS or another app`)
+      })
+    }
+    window.addEventListener('keydown', onKey, true)
+    return () => window.removeEventListener('keydown', onKey, true)
+  }, [recording])
 
   useEffect(() => {
     if (!s) return
@@ -48,7 +75,10 @@ export function TrayWindow(): React.JSX.Element | null {
   const elapsed = s.session ? now - new Date(s.session.startedAt).getTime() : 0
 
   return (
-    <div className="glass-flat rounded-[22px] h-screen box-border flex flex-col overflow-hidden">
+    <MagicCard
+      className="rounded-[22px] h-screen box-border"
+      contentClassName="h-full flex flex-col overflow-hidden"
+    >
       <header className="pt-[18px] px-[18px] pb-3.5 flex flex-col gap-3">
         <div className="flex items-center gap-3">
           <Flower res={11} cell={4} paused={s.flower === 'paused' || s.flower === 'off'} />
@@ -128,6 +158,27 @@ export function TrayWindow(): React.JSX.Element | null {
           </div>
         </div>
         <div className="flex items-center justify-between gap-3 min-h-11">
+          <span className="flex flex-col gap-0.5">
+            <span id="toggle-key" className="text-[14px] font-semibold">
+              Open Klair with
+            </span>
+            <span className="text-[12.5px] text-ink-3" role="status">
+              {keyError ||
+                (recording ? 'Press the new shortcut · esc to cancel' : 'Click to change')}
+            </span>
+          </span>
+          <Button
+            className="h-[34px] text-[13px]"
+            aria-labelledby="toggle-key"
+            onClick={() => {
+              setKeyError('')
+              setRecording((r) => !r)
+            }}
+          >
+            {recording ? 'Listening…' : prettyAccel(s.toggleKey)}
+          </Button>
+        </div>
+        <div className="flex items-center justify-between gap-3 min-h-11">
           <label htmlFor="quiet" className="flex flex-col gap-0.5">
             <span className="text-[14px] font-semibold">Quiet for 30 minutes</span>
             <span className="text-[12.5px] text-ink-3">fn Q or ⌃⌥Q from anywhere</span>
@@ -179,6 +230,6 @@ export function TrayWindow(): React.JSX.Element | null {
           </button>
         </div>
       </footer>
-    </div>
+    </MagicCard>
   )
 }
