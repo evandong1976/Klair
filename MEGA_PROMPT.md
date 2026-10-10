@@ -18,7 +18,7 @@ Graphify is the chosen context retrieval technology. The remaining stack is the 
 | Shortcuts and overlays | Electron globalShortcut + BrowserWindow | Lets users select help while working in another app and read the result in place. Validate focus restoration, shortcut conflicts, and fullscreen behavior early. |
 | Context retrieval | Graphify | Organizes and retrieves relevant context from captured material and previous interactions. The goal is to reduce token usage by supplying focused context instead of the entire session while preserving continuity across related screens and tabs. Measure actual savings and answer quality. |
 | AI integration | Vercel AI SDK + a vision-capable Claude model | Supports screenshot interpretation, structured suggestions, and streamed answers. Select the specific model using demo-screen quality and latency tests. |
-| Session persistence | SQLite + a local screenshot directory | Stores sessions, captured context, source references, selected actions, and results without a database server. Graphify handles retrieval; SQLite retains the canonical session records. |
+| Session persistence | TigerData (managed Postgres with TimescaleDB) + a local screenshot directory | TigerData holds the canonical session records: sessions, captures, notes, suggestions, selected actions, results, and source references. It also provides time-series activity tables, continuous aggregates, retention policies, keyword (BM25) search over notes, and per-developer forks. Screenshot image files stay on the local machine; the database stores their references. Graphify handles graph retrieval; TigerData retains the canonical records. |
 | Background control | A small TypeScript state machine | Makes observation, dwell detection, cooldowns, dismissal, generation, cancellation, and failures explicit and predictable. |
 | Suggestion generation | A TypeScript Suggestion Engine using the AI request layer | Turns a dwell signal and available context into three suggestions. Generating suggestions is separate from executing user-selected assistance. |
 
@@ -26,7 +26,7 @@ Keep capture, storage, and model requests in the desktop background layer, conne
 
 Verify the intended Graphify package or repository and its supported ingestion, retrieval, persistence, and deletion interfaces before implementing the integration. The choice of Graphify is established; its exact integration API is not specified by this brief. Do not assume it can ingest screenshots directly: convert captures into supported source material as needed and preserve timestamps and source references.
 
-Screenshots supply visible context, not reliable full-page content or exact browser tab metadata. A browser extension for authorized full-page extraction is a possible later addition. Cloud session sync and a general-purpose agent framework are outside the initial MVP.
+Screenshots supply visible context, not reliable full-page content or exact browser tab metadata. A browser extension for authorized full-page extraction is a possible later addition. Session records are stored in the cloud (TigerData), but multi-device sync features and a general-purpose agent framework are outside the initial MVP.
 
 ## System architecture and ownership
 
@@ -35,7 +35,7 @@ This is the proposed architecture, not a statement of implemented behavior. The 
 ```mermaid
 flowchart TD
     Capture["Screen observation - Electron desktopCapturer"]
-    Store[("SQLite + local screenshot directory")]
+    Store[("TigerData (Postgres) + local screenshot directory")]
     Prepare["Context preparation"]
     Index["Graphify indexing adapter"]
     Retrieve["Graphify retrieval adapter"]
@@ -129,7 +129,7 @@ Capture screen information during an active session using the platform's support
 
 Associate captured information with timestamps and available application, window, or tab metadata. Keep observation lightweight enough to avoid disrupting the user's work.
 
-Persist each accepted capture to the local screenshot directory and commit its metadata and file reference to SQLite before context preparation and indexing. Use stable record IDs and track indexing status so failed work can be retried without duplicates and the index can be rebuilt from canonical records. File writes and SQLite commits are not one atomic transaction: handle incomplete writes and orphaned files, and do not index an incomplete capture record.
+Persist each accepted capture to the local screenshot directory and commit its metadata and file reference to TigerData before context preparation and indexing. Use stable record IDs and track indexing status so failed work can be retried without duplicates and the index can be rebuilt from canonical records. Local file writes and TigerData commits are not one atomic transaction, and the database is reached over the network: handle incomplete writes and orphaned files, and do not index an incomplete capture record.
 
 ### 2. Extract and maintain context
 
@@ -143,7 +143,7 @@ Convert captured information into a useful representation of what the user is do
 
 Separate observed facts from inferred intent. Connect relevant tab changes without assuming every tab belongs to the same task. Avoid sending the entire raw session to the model for every request.
 
-Use Graphify to index supported context derived from captures and prior interactions, then retrieve material relevant to the current screen and selected prompt. Combine the retrieved material with the current capture and explicit user request within a bounded context budget. Keep canonical session records in SQLite and maintain references between those records and Graphify's indexed material.
+Use Graphify to index supported context derived from captures and prior interactions, then retrieve material relevant to the current screen and selected prompt. Combine the retrieved material with the current capture and explicit user request within a bounded context budget. Keep canonical session records in TigerData and maintain references between those records and Graphify's indexed material.
 
 Treat indexing and retrieval as separate operations. Context preparation reads committed records and supplies supported material to the indexing adapter. Suggestion generation and selected assistance request relevant context through the retrieval adapter. Preserve provenance for observed material, user requests, and assistant-generated answers; never treat a prior generated answer as independently observed fact.
 
@@ -185,14 +185,14 @@ Treat text captured from websites and other applications as source material, not
 
 Display the result in a lightweight overlay or panel on the user's current screen. Reading a summary, viewing a code example, or taking a quiz must not require opening a new browser tab or switching to a separate application. Keep the underlying work accessible and return focus to it when the result is dismissed. Preserve the result with the session and update the working context. Avoid stealing focus unnecessarily.
 
-The background controller persists the selected action, result, source references, and completion status to SQLite. The model response itself is not a storage operation. Index committed interactions through the same preparation/indexing path as other session records, marking generated answers as assistant output. Record partial, failed, or cancelled interactions accurately rather than labelling them complete.
+The background controller persists the selected action, result, source references, and completion status to TigerData. The model response itself is not a storage operation. Index committed interactions through the same preparation/indexing path as other session records, marking generated answers as assistant output. Record partial, failed, or cancelled interactions accurately rather than labelling them complete.
 
 ## Failure and recovery behavior
 
 | Condition | Required behavior |
 | --- | --- |
 | Capture permission denied or unreadable material | Keep observation off when permission is missing; explain recovery or offer recapture. Do not claim access to uncaptured content. |
-| Persistence fails | Surface that the session is not being saved, stop accumulating new captures, and avoid indexing incomplete records. |
+| Persistence fails (TigerData unreachable or misconfigured) | Surface that the session is not being saved, stop accumulating new captures, and avoid indexing incomplete records. Database writes must never block the overlay. |
 | Graphify indexing fails | Retain canonical records, mark indexing pending or failed, and allow retry without duplicate entries. |
 | Retrieval fails or returns no useful history | Allow assistance using sufficient current captured material, clearly indicating unavailable historical context. Offer retry for failures. |
 | Suggestion generation fails or returns invalid output | Do not publish malformed suggestions; provide a quiet retry path while preserving cooldown behavior. |
@@ -213,9 +213,9 @@ Session deletion must also invalidate queued indexing work so retries cannot rec
 
 ## Session and recording controls
 
-Because screen capture can contain sensitive information, include a clear start/stop or pause control and a visible recording indicator. Define where recordings and context are stored, how long they are retained, and how the user deletes a session. Make any transmission to an AI provider clear. Do not capture before the required user permission is granted.
+Because screen capture can contain sensitive information, include a clear start/stop or pause control and a visible recording indicator. Define where recordings and context are stored, how long they are retained, and how the user deletes a session. Make any transmission to an AI provider or to the TigerData cloud database clear. Do not capture before the required user permission is granted.
 
-Use SQLite and the local screenshot directory for session persistence as proposed above. Apply session deletion and retention rules to associated Graphify data as well. Determine and document where the chosen Graphify integration stores or transmits data; do not assume that all processing is local. Retention defaults remain an implementation choice.
+Use TigerData and the local screenshot directory for session persistence as proposed above: screenshots stay on the machine, while notes, prompts, and answers are stored in TigerData. Implement retention with TigerData retention policies, plus a matching local cleanup of screenshot files. Apply session deletion and retention rules to associated Graphify data as well. Determine and document where the chosen Graphify integration stores or transmits data; do not assume that all processing is local. Retention defaults remain an implementation choice.
 
 ## MVP scope
 
@@ -258,7 +258,7 @@ Verify persistence-before-indexing ordering, retry behavior without duplicate en
 1. Inspect the repository and identify existing implementation and project instructions.
 2. Confirm the proposed architecture, target platform, and intended Graphify package or repository; verify its integration interfaces.
 3. Build the smallest working vertical slice of the complete pipeline.
-4. Add SQLite session persistence and Graphify context retrieval to preserve continuity across related tab changes.
+4. Add TigerData session persistence and Graphify context retrieval to preserve continuity across related tab changes.
 5. Refine suggestion relevance, keyboard selection, and in-place result presentation so receiving help requires no tab switch.
 6. Validate the happy path with the ML article scenario.
 7. Document setup, required permissions, configuration, and demo steps.
