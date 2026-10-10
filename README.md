@@ -36,7 +36,13 @@ pnpm dev
    tiger db uri <fork-id> --with-password      # → DATABASE_URL
    ```
    Tables, the hypertable, the continuous aggregate, retention and the BM25 index are created on start. The console prints any optional feature the service lacks. Without `DATABASE_URL`, Klair won't start a session: it shows "This session isn't being saved".
-3. **Graphify:** `uv tool install graphifyy`. Apps launched from the Dock don't inherit your shell PATH, so set `GRAPHIFY_BIN` to the output of `which graphify`. Without Graphify, answers still work using TigerData search and the current screen.
+3. **Graphify** (a Python tool, so there's no Homebrew formula; use pipx from Homebrew):
+   ```bash
+   brew install pipx
+   pipx ensurepath          # adds ~/.local/bin to your PATH (open a new Terminal after)
+   pipx install graphifyy   # note the double y
+   ```
+   Klair finds `graphify` in `~/.local/bin`, `/opt/homebrew/bin` or your shell's PATH by itself. Set `GRAPHIFY_BIN` only if it's somewhere else. Without Graphify, answers still work using TigerData search and the current screen.
 4. **fn key (optional):** `pnpm build:native` builds `native/fn-key` against Electron, then grant Input Monitoring. Until then, use ⌃⌥K / ⌃⌥P / ⌃⌥Q.
 5. **Tiger MCP for builders (optional):** `tiger mcp install claude-code` lets Claude Code inspect the schema and test queries.
 

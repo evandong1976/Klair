@@ -1,17 +1,58 @@
 import { execFile } from 'child_process'
 import { existsSync } from 'fs'
+import { homedir } from 'os'
+import { join } from 'path'
 import { promisify } from 'util'
 import { config } from './config'
 
 const run = promisify(execFile)
 
-// Graphify CLI (`uv tool install graphifyy`). GUI-launched apps don't inherit the
-// shell PATH, so GRAPHIFY_BIN may be an absolute path.
+// Graphify CLI (Python package `graphifyy`). On a Mac with Homebrew:
+//   brew install pipx && pipx ensurepath && pipx install graphifyy
+// pipx puts the `graphify` command in ~/.local/bin, which apps often can't see on
+// their PATH, so Klair looks in the usual places itself. GRAPHIFY_BIN overrides.
 //
 // Verified with `graphify --help`:
 //   extract <dir> --backend openai --out <dir>  → <out>/graphify-out/graph.json (incremental by default)
 //   query "<q>" --budget N --graph <path>       → local BFS, no LLM
 //   benchmark <graph.json>                      → token reduction vs full corpus
+
+let resolved: string | null = null
+
+/** Find the graphify binary: GRAPHIFY_BIN, common install folders, then the login shell's PATH. */
+export async function resolveGraphifyBin(): Promise<string | null> {
+  if (process.env.GRAPHIFY_BIN) return process.env.GRAPHIFY_BIN
+  if (resolved && existsSync(resolved)) return resolved
+  const home = homedir()
+  const candidates = [
+    join(home, '.local', 'bin', 'graphify'), // pipx / uv default
+    '/opt/homebrew/bin/graphify', // Homebrew on Apple silicon
+    '/usr/local/bin/graphify' // Homebrew on Intel
+  ]
+  for (const c of candidates) {
+    if (existsSync(c)) return (resolved = c)
+  }
+  // Same PATH as Terminal (login shell), for anything installed elsewhere.
+  try {
+    const shell = process.env.SHELL || '/bin/zsh'
+    const { stdout } = await run(shell, ['-lc', 'command -v graphify'], { timeout: 5000 })
+    const p = stdout.trim().split('\n').pop()
+    if (p && existsSync(p)) return (resolved = p)
+  } catch {
+    /* not found */
+  }
+  return null
+}
+
+async function bin(): Promise<string> {
+  const b = await resolveGraphifyBin()
+  if (!b) {
+    const err = new Error('graphify not found') as NodeJS.ErrnoException
+    err.code = 'ENOENT'
+    throw err
+  }
+  return b
+}
 
 /** Index a session's notes folder. Makes LLM calls through OpenRouter's OpenAI-compatible endpoint. */
 export async function indexSession(
@@ -20,7 +61,7 @@ export async function indexSession(
   signal?: AbortSignal
 ): Promise<string> {
   const { stdout, stderr } = await run(
-    config.graphifyBin,
+    await bin(),
     ['extract', notesDir, '--backend', 'openai', '--out', outDir, '--no-gitignore'],
     {
       timeout: 600_000,
@@ -46,7 +87,7 @@ export async function queryContext(
 ): Promise<string> {
   if (!existsSync(graph)) return ''
   const { stdout } = await run(
-    config.graphifyBin,
+    await bin(),
     ['query', question, '--budget', String(budget), '--graph', graph],
     { timeout: 20_000, maxBuffer: 4 * 1024 * 1024 }
   )
@@ -55,15 +96,16 @@ export async function queryContext(
 
 export async function graphifyAvailable(): Promise<{ ok: boolean; detail: string }> {
   try {
-    await run(config.graphifyBin, ['--help'], { timeout: 10_000 })
-    return { ok: true, detail: `Found ${config.graphifyBin}` }
+    const b = await bin()
+    await run(b, ['--help'], { timeout: 10_000 })
+    return { ok: true, detail: `Found ${b}` }
   } catch (err) {
     const code = (err as NodeJS.ErrnoException).code
     return {
       ok: false,
       detail:
         code === 'ENOENT'
-          ? 'graphify not found. Run `uv tool install graphifyy` and set GRAPHIFY_BIN to `which graphify`.'
+          ? 'graphify not found. In Terminal: brew install pipx && pipx ensurepath && pipx install graphifyy, then click Check again.'
           : `graphify failed: ${(err as Error).message.slice(0, 160)}`
     }
   }

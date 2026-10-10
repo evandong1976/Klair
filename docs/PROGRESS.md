@@ -44,4 +44,5 @@ _Not run on a Mac yet._
 - 2026-10-10: privacy copy deviates from BUILD_PROMPT §2: each new screen is sent to Claude for a vision note, so the copy says so instead of "only the relevant ones".
 - 2026-10-10: Vite inlines small fonts as data: URLs, so the CSP allows `font-src 'self' data:`.
 - 2026-10-10: reopening the panel shows ideas unless an answer is still streaming.
+- 2026-10-10: Graphify is installed with Homebrew + pipx (`brew install pipx && pipx install graphifyy`), not uv. Klair finds `graphify` in ~/.local/bin, /opt/homebrew/bin, /usr/local/bin or the login shell's PATH; GRAPHIFY_BIN is optional.
 - 2026-10-10: `KLAIR_BASELINE=full` swaps retrieval for all session notes, for token comparisons (`userData/metrics.jsonl`).

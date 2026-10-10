@@ -14,7 +14,6 @@ function num(name: string, fallback: number): number {
 export const config = {
   openrouterKey: env.OPENROUTER_API_KEY ?? '',
   databaseUrl: env.DATABASE_URL ?? '',
-  graphifyBin: env.GRAPHIFY_BIN || 'graphify',
   graphifyModel: env.GRAPHIFY_MODEL || 'anthropic/claude-haiku-5.5',
   // Picked for speed from a benchmark on real Klair prompts (2026-10-10, via OpenRouter):
   //   screen note: Gemini 3.5 Flash-Lite ~2.5 s, GPT-5.4 mini ~4.0 s, Claude Haiku 5.5 ~5.2 s
