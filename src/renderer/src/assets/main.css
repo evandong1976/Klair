@@ -1,1 +1,137 @@
 @import 'tailwindcss';
+@import '@fontsource/nunito/400.css';
+@import '@fontsource/nunito/500.css';
+@import '@fontsource/nunito/600.css';
+@import '@fontsource/nunito/700.css';
+@import '@fontsource/nunito/800.css';
+@import '@fontsource/silkscreen/400.css';
+@import '@fontsource/geist-mono/400.css';
+@import '@fontsource/geist-mono/500.css';
+
+/* Design tokens from design/DESIGN.md §2 */
+@theme {
+  --font-sans: 'Nunito', -apple-system, 'Helvetica Neue', sans-serif;
+  --font-pixel: 'Silkscreen', ui-monospace, monospace;
+  --font-mono: 'Geist Mono', ui-monospace, monospace;
+
+  --color-ink: #2d3128;
+  --color-ink-2: #3f4538;
+  --color-ink-3: #4b5044;
+  --color-muted: #686d60;
+  --color-sage-deep: #46522f;
+  --color-sage-deeper: #3f4a2c;
+  --color-sage-dark: #56623f;
+  --color-sage: #9caa77;
+  --color-sage-tint: #eef1e6;
+  --color-sage-tint-2: #f4f6ee;
+  --color-sage-line: #c9d1b6;
+  --color-rose: #ee8378;
+  --color-rose-text: #a8463d;
+  --color-rose-hover: #7e2f28;
+  --color-blush: #fce4e2;
+  --color-blush-2: #fff5f4;
+  --color-blush-3: #fff7f6;
+  --color-blush-line: #efcfcb;
+  --color-blush-key: #ebb8b2;
+  --color-line: #f3e6e3;
+  --color-line-2: #f0e4e1;
+  --color-line-input: #eadcd9;
+  --color-line-key: #e2d3d0;
+  --color-danger: #a3271a;
+  --color-danger-line: #e8b9b3;
+  --color-danger-outline: #e8a39b;
+  --color-ground: #fbf7f5;
+  --color-wallpaper: #d8decf;
+  --color-code: #f7f5ef;
+  --color-code-line: #ece8de;
+  --color-code-comment: #6e7365;
+  --color-on-dark: #fffcfb;
+  --color-key-dark: #4a4f43;
+  --color-key-dark-line: #5c6254;
+
+  --radius-panel: 26px;
+  --radius-card: 16px;
+  --radius-input: 14px;
+  --radius-button: 12px;
+  --radius-key: 6px;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  background: transparent;
+  font-family: var(--font-sans);
+  color: var(--color-ink);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Thick glass: container backgrounds only (DESIGN.md §2). Contents stay solid white. */
+@utility glass {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.64), rgba(255, 244, 242, 0.46));
+  backdrop-filter: blur(36px) saturate(170%);
+  -webkit-backdrop-filter: blur(36px) saturate(170%);
+  border: 1px solid rgba(255, 255, 255, 0.75);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.95),
+    inset 0 0 0 6px rgba(255, 255, 255, 0.14),
+    0 30px 70px rgba(90, 60, 55, 0.22),
+    0 2px 6px rgba(90, 60, 55, 0.08);
+}
+
+/* Inside a native-vibrancy window the outer shadow would be clipped; keep the tint only. */
+@utility glass-flat {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.64), rgba(255, 244, 242, 0.46));
+  border: 1px solid rgba(255, 255, 255, 0.75);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.95),
+    inset 0 0 0 6px rgba(255, 255, 255, 0.14);
+}
+
+@utility pixelated {
+  image-rendering: pixelated;
+}
+
+@keyframes klair-bob {
+  0% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-2px);
+  }
+}
+@utility klair-bob {
+  animation: klair-bob 3.2s steps(1) infinite;
+}
+
+@keyframes klair-fill {
+  0% {
+    width: 8%;
+  }
+  100% {
+    width: 100%;
+  }
+}
+@utility klair-fill {
+  animation: klair-fill 2.4s steps(12) infinite;
+}
+
+.drag {
+  -webkit-app-region: drag;
+}
+.no-drag {
+  -webkit-app-region: no-drag;
+}
+
+input[type='range'] {
+  accent-color: var(--color-rose);
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-rose);
+  outline-offset: 2px;
+}
+
+::selection {
+  background: var(--color-blush);
+}

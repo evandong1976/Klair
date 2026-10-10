@@ -101,6 +101,7 @@ export interface KlairState {
   quietUntil: number | null
   dwellMs: number
   lastAnswerTitle: string | null
+  retentionDays: number
   stats: { captures: number; answers: number; tabs: number }
 }
 

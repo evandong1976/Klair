@@ -1,20 +1,20 @@
 # Klair build progress
 
-## Handoff (updated 2026-10-10 16:10 ET, by build session · claude-opus-5-5)
-- **Milestone:** 1 (Connections) — main process done; renderer windows next (Milestone 2)
-- **Just finished:** the whole main process. It covers env (`.env.local`), config, TigerData schema + hypertable/aggregate/retention/BM25 (each optional), health checks, capture → persist → notes, the Graphify indexer, retrieval, suggestions, assistance streaming, the controller and its pure core (7 unit tests), windows, tray, shortcuts and typed IPC/preload.
+## Handoff (updated 2026-10-10 16:40 ET, by build session · claude-opus-5-5)
+- **Milestone:** 2 (Panel + keys) — renderer screens built; next: visual check with mock data, then rename/packaging + fn addon (Milestone 7)
+- **Just finished:** every renderer window: flower (bloom, nudge/notice pills), panel (ideas / answer / quiz / ⌘/ sheet / error cards, full ⌘ keymap), Start (permissions + connection health), Tray popover, Sessions (timeline, holding, privacy, **Session insights** from the TigerData aggregate). Also Tailwind v4 tokens, bundled fonts, answer-block renderers. `pnpm build` passes.
 - **In progress:** nothing half-done
-- **Next step:** build the renderer. `src/renderer/src/main.tsx` should route on `location.hash` (`#/flower`, `#/panel`, `#/start`, `#/sessions`, `#/tray`). Put DESIGN.md tokens in `assets/main.css` (`@theme`), add `@fontsource` fonts, then build the screens from `design/canvas/*.dc.html` against the `window.klair` API in `src/shared/types.ts`.
-- **Broken / failing:** nothing; `pnpm typecheck`, `pnpm lint` and `pnpm test` pass. The renderer is still the scaffold placeholder, so windows show "Claire" until Milestone 2.
-- **Decisions made this session:** see `docs/PLAN.md`
+- **Next step:** render each route in headless Chromium with a mocked `window.klair` to catch runtime errors (script: `scripts/preview.mjs`, to be written), then the rename/packaging changes from BUILD_PROMPT §4.5 and the `native/fn-key` addon.
+- **Broken / failing:** nothing known; typecheck, lint, test and build all pass
+- **Decisions made this session:** privacy copy says Claude sees *each new screen* (vision notes), not only the screens tied to ideas, because that's how the pipeline works; see the Decisions log
 - **Blocked on / questions for the user:** none
-- **How to verify current state:** `pnpm install && pnpm typecheck && pnpm lint && pnpm test`
+- **How to verify current state:** `pnpm install && pnpm typecheck && pnpm lint && pnpm test && pnpm build`, then on the Mac `pnpm dev`
 
 ---
 
 ## Milestones
 - [x] 1. Connections: main process (health, schema, IPC, windows, shortcuts). Rename and packaging still pending.
-- [ ] 2. Panel + keys (renderer)
+- [x] 2. Panel + keys (renderer; visual check on the Mac pending)
 - [x] 3. Capture → persist → notes (main process; verify on the Mac)
 - [x] 4. Controller (core unit-tested)
 - [x] 5. Retrieval: Graphify + TigerData search (verify on the Mac)
@@ -39,4 +39,5 @@ _Not run on a Mac yet._
 - 2026-10-10: TigerData replaces SQLite for canonical records; screenshots stay local.
 - 2026-10-10: `.env.local` is loaded before `.env` (the team's keys are in `.env.local`).
 - 2026-10-10: the panel handles ⌘ keys itself while focused; there are no global ⌘ registrations.
+- 2026-10-10: privacy copy deviates from BUILD_PROMPT §2: each new screen is sent to Claude for a vision note, so the copy says so instead of "only the relevant ones".
 - 2026-10-10: `KLAIR_BASELINE=full` swaps retrieval for all session notes, for token comparisons (`userData/metrics.jsonl`).

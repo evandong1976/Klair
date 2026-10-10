@@ -18,6 +18,7 @@ let state: KlairState = {
   quietUntil: null,
   dwellMs: config.dwellMs,
   lastAnswerTitle: null,
+  retentionDays: config.retentionDays,
   stats: { captures: 0, answers: 0, tabs: 0 }
 }
 
