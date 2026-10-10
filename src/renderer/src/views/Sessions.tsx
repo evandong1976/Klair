@@ -22,6 +22,24 @@ function duration(a: string, b: string | null): string {
   return m >= 60 ? `${Math.floor(m / 60)} h ${m % 60} min` : `${m} min`
 }
 
+/** Where the session's records are: on this Mac while it runs, in TigerData once uploaded. */
+function uploadLine(s: SessionListItem, live: boolean): string {
+  if (live)
+    return 'Screenshots and this session are on this Mac; it goes to TigerData when it ends.'
+  switch (s.upload.status) {
+    case 'synced':
+      return 'Screenshots on this Mac · notes and answers also in TigerData.'
+    case 'uploading':
+      return 'Screenshots on this Mac · uploading notes and answers to TigerData…'
+    case 'failed':
+      return `On this Mac only for now: the TigerData upload failed${
+        s.upload.error ? ` (${s.upload.error})` : ''
+      }. Klair retries hourly and when you check connections.`
+    default:
+      return 'On this Mac · waiting to upload to TigerData.'
+  }
+}
+
 function fmtSecs(s: number): string {
   return s >= 60 ? `${Math.round(s / 60)} min` : `${s} s`
 }
@@ -301,7 +319,7 @@ export function SessionsWindow(): React.JSX.Element {
                     {detail.insights.source === 'aggregate'
                       ? 'From the TigerData continuous aggregate activity_by_minute'
                       : detail.insights.source === 'raw'
-                        ? 'From the screen_activity table'
+                        ? 'From the screen_activity table on this Mac'
                         : ''}
                   </span>
                 </section>
@@ -326,7 +344,7 @@ export function SessionsWindow(): React.JSX.Element {
                 <section className="rounded-[18px] bg-white border border-line-2 p-[18px] flex flex-col gap-2.5">
                   <h2 className="m-0 font-pixel font-normal text-[11px] text-sage-deep">Privacy</h2>
                   <p className="m-0 text-[14px] leading-[1.5]">
-                    {`Screenshots on this Mac · notes and answers in TigerData. Deleted after ${detail.privacy.retentionDays} days.`}
+                    {`${uploadLine(detail.session, isLive)} Deleted after ${detail.privacy.retentionDays} days.`}
                   </p>
                   <p className="m-0 text-[14px] leading-[1.5]">
                     {`Sent to the AI model ${detail.privacy.sentToClaude} times this session: new screens for notes, plus ideas and answers.`}

@@ -1,5 +1,5 @@
 import { config } from './config'
-import { pendingIndexCaptures, setIndexStatus } from './db'
+import { pendingIndexCaptures, setIndexStatus } from './local'
 import { indexSession } from './graphify'
 import { notesDir, sessionDir } from './paths'
 

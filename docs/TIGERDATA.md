@@ -1,14 +1,16 @@
 # How Klair uses TigerData
 
-TigerData is Klair's canonical database. It does work Klair couldn't do as well with plain local storage: a time-series of what's on screen, live rollups that power **Session insights**, automatic retention, ranked keyword search across sessions (and the fallback when Graphify is unavailable), and per-developer forks.
+A running session is saved on the Mac first, in SQLite (`src/main/local.ts`), so capturing never waits on the network. When the session ends, `src/main/upload.ts` copies it to TigerData in full, and from then on TigerData is where the session is kept. It does work Klair couldn't do as well with plain local storage: a time-series of what's on screen, live rollups that power **Session insights**, automatic retention, ranked keyword search across sessions (and the fallback when Graphify is unavailable), and per-developer forks.
 
 Every feature below is created by `migrate()` in `src/main/db.ts`, one step at a time. A feature the service lacks is skipped, logged, and reported on the Start window.
 
-## 1. Canonical records
+## 1. Session records, uploaded when a session ends
 
 `sessions`, `captures`, `suggestion_sets`, `actions` and `notes` hold every session, screenshot reference, idea set, picked action and result, with provenance. Screenshot image files stay on the Mac; rows store their path.
 
-**Save order:** PNG file → `captures` row (`status = 'pending'`) → `committed`. Only committed captures get notes and are indexed. On startup `reconcileLocal()` deletes orphan files and resolves half-written rows.
+**While a session runs** these rows (and `screen_activity`) are written to the same tables in SQLite on the Mac. Save order there: PNG file → `captures` row (`status = 'pending'`) → `committed`. Only committed captures get notes and are indexed. On startup `reconcileLocal()` deletes orphan files and resolves half-written rows.
+
+**When it ends** `uploadSession()` copies every row in one transaction: one `insert … select from jsonb_to_recordset($1)` per table, with local ids carried in `local_id` so foreign keys are remapped to TigerData ids. `sessions.local_key` (unique) identifies the local session, so a retried upload replaces the earlier copy instead of duplicating it. On success the local session records `remote_id`; a failure is marked and retried on start, hourly and on **Check again**. Sessions left open by a quit or crash are ended and uploaded on the next start.
 
 ## 2. Activity time-series: `screen_activity` hypertable
 
@@ -46,7 +48,7 @@ select add_continuous_aggregate_policy('activity_by_minute',
   schedule_interval => interval '1 minute', if_not_exists => true);
 ```
 
-The Sessions window's **Session insights** card reads it:
+Uploaded activity is older than the policy's refresh window, so each upload refreshes the aggregate for that session's time range. The Sessions window's **Session insights** card reads it for ended, uploaded sessions (a running one is read from SQLite):
 
 ```sql
 -- where the time went (seconds = ticks × capture interval)
@@ -70,11 +72,11 @@ from suggestion_sets s where s.session_id = $1 order by s.created_at desc limit 
 select add_retention_policy('screen_activity', drop_after => interval '14 days', if_not_exists => true);
 ```
 
-`KLAIR_RETENTION_DAYS` sets the interval. A database policy can't delete files on the Mac, so `retentionSweep()` (on start, then hourly) deletes each expired session everywhere: rows (cascade), screenshots, notes, the Graphify index and cache entries. Deleting a session by hand does the same and also cancels queued Graphify work, so retries can't bring deleted context back.
+`KLAIR_RETENTION_DAYS` sets the interval. A database policy can't delete files on the Mac, so `retentionSweep()` (on start, then hourly) deletes each expired session everywhere: local rows, its TigerData copy (cascade), screenshots, notes, the Graphify index and cache entries. TigerData sessions with no local copy (older builds, other machines) are swept too. A delete made while TigerData is unreachable is queued and retried. Deleting a session by hand does the same and also cancels queued Graphify work, so retries can't bring deleted context back.
 
 ## 5. Search over notes: BM25 via `pg_textsearch`
 
-Observed notes (one per changed screen) and Klair's own answers (marked `provenance = 'assistant'`) go in `notes`.
+Observed notes (one per changed screen) and Klair's own answers (marked `provenance = 'assistant'`) go in `notes`. TigerData search covers earlier, uploaded sessions; the running session (and any not yet uploaded) is searched with SQLite FTS5 (BM25) on the Mac.
 
 ```sql
 create extension if not exists pg_textsearch;
@@ -82,12 +84,11 @@ create index if not exists notes_body_bm25 on notes using bm25(body) with (text_
 
 select id, session_id, capture_id, provenance, topic, body, created_at
 from notes
-where ($2::bigint is null or capture_id is distinct from $2)
 order by body <@> to_bm25query($1, 'notes_body_bm25')
-limit 6;
+limit 4;
 ```
 
-If `pg_textsearch` isn't available, Klair uses Postgres full-text search instead (`to_tsvector` GIN index + `websearch_to_tsquery`); the Start window says which one is active. `retrieve.ts` merges these hits, across this and earlier sessions, with Graphify's graph context. When Graphify fails or hasn't indexed yet, TigerData search alone supplies "Earlier tab" context.
+If `pg_textsearch` isn't available, Klair uses Postgres full-text search instead (`to_tsvector` GIN index + `websearch_to_tsquery`); the Start window says which one is active. `retrieve.ts` merges these "Earlier session" hits with local "Earlier tab" hits and Graphify's graph context. Any one source failing still leaves the others.
 
 ## 6. Forks for building and the demo
 

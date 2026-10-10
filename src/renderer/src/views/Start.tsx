@@ -34,8 +34,11 @@ export function StartWindow(): React.JSX.Element {
   const check = (id: string): HealthReport['checks'][number] | undefined =>
     health?.checks.find((c) => c.id === id)
   const screenOk = check('screen')?.status === 'ok'
-  const dbOk = check('tigerdata') && check('tigerdata')?.status !== 'fail'
-  const canStart = !!health && screenOk && !!dbOk && !state?.session
+  // Sessions are saved on this Mac first and uploaded to TigerData when they end,
+  // so only the local store has to work to start one.
+  const localOk = check('local')?.status === 'ok'
+  const tigerOk = !!check('tigerdata') && check('tigerdata')?.status !== 'fail'
+  const canStart = !!health && screenOk && localOk && !state?.session
   const start = (): void => {
     if (canStart) void klair.startSession(name)
   }
@@ -116,11 +119,13 @@ export function StartWindow(): React.JSX.Element {
           }
         />
         <HealthRow
-          status={dbOk ? 'ok' : 'fail'}
+          status={!localOk ? 'fail' : tigerOk ? 'ok' : 'warn'}
           title="Where your data lives"
-          detail={`Screenshots stay on this Mac. Notes and answers are saved to your TigerData database. Kept for ${
-            state?.retentionDays ?? '…'
-          } days.`}
+          detail={`${
+            localOk ? '' : `${check('local')?.detail ?? 'Checking this Mac…'} `
+          }Screenshots stay on this Mac. A session is saved here while it runs, then uploaded to your TigerData database when it ends${
+            tigerOk ? '' : ' (once TigerData is reachable)'
+          }. Kept for ${state?.retentionDays ?? '…'} days.`}
           last
         />
       </ul>

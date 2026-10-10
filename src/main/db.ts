@@ -1,14 +1,12 @@
 import { Pool, type PoolClient } from 'pg'
 import { config } from './config'
-import type {
-  HealthReport,
-  InsightRow,
-  SessionListItem,
-  StuckSpot,
-  TimelineItem
-} from '../shared/types'
+import type { HealthReport, InsightRow, StuckSpot } from '../shared/types'
+import type { NoteHit } from './local'
 
-// TigerData (Postgres + TimescaleDB) holds Klair's canonical records.
+// TigerData (Postgres + TimescaleDB) is where ended sessions are kept. A running
+// session writes to SQLite on the Mac (local.ts); upload.ts copies it here when it
+// ends. From here come search over earlier sessions, the activity_by_minute
+// continuous aggregate for insights, and retention.
 // Screenshot image files stay on the Mac; rows store their paths.
 // Every schema change is additive: teammates may already have these tables.
 
@@ -23,7 +21,7 @@ export function getPool(): Pool | null {
   return pool
 }
 
-function requirePool(): Pool {
+export function requirePool(): Pool {
   const p = getPool()
   if (!p) throw new Error('DATABASE_URL is not set')
   return p
@@ -117,6 +115,16 @@ create table if not exists screen_activity (
   dwell_ms integer not null default 0
 );
 create index if not exists screen_activity_session_idx on screen_activity (session_id, time desc);
+
+-- Uploads from the Mac's SQLite store. local_key identifies the local session, so a
+-- retried upload replaces the earlier copy instead of duplicating it; local_id maps
+-- each row back to its local row (and lets the upload remap ids in one round trip).
+alter table sessions add column if not exists local_key text;
+create unique index if not exists sessions_local_key_idx on sessions (local_key);
+alter table captures add column if not exists local_id bigint;
+alter table suggestion_sets add column if not exists local_id bigint;
+alter table actions add column if not exists local_id bigint;
+alter table notes add column if not exists local_id bigint;
 `
 
 async function tryStep(client: PoolClient, label: string, sql: string): Promise<boolean> {
@@ -202,54 +210,7 @@ export async function migrate(): Promise<HealthReport['capabilities']> {
   }
 }
 
-// ---------------------------------------------------------------- sessions
-
-export async function createSession(name: string): Promise<{ id: number; startedAt: string }> {
-  const { rows } = await requirePool().query(
-    `insert into sessions (name, status) values ($1, 'active') returning id, started_at`,
-    [name]
-  )
-  return { id: Number(rows[0].id), startedAt: rows[0].started_at.toISOString() }
-}
-
-export async function setSessionStatus(
-  id: number,
-  status: 'active' | 'paused' | 'ended'
-): Promise<void> {
-  await requirePool().query(
-    `update sessions set status = $2, ended_at = case when $2 = 'ended' then now() else ended_at end where id = $1`,
-    [id, status]
-  )
-}
-
-export async function listSessions(): Promise<SessionListItem[]> {
-  const { rows } = await requirePool().query(
-    `select id, name, started_at, ended_at, status from sessions order by started_at desc limit 50`
-  )
-  return rows.map((r) => ({
-    id: Number(r.id),
-    name: r.name,
-    startedAt: r.started_at.toISOString(),
-    endedAt: r.ended_at ? r.ended_at.toISOString() : null,
-    status: r.status
-  }))
-}
-
-export async function getSession(id: number): Promise<SessionListItem | null> {
-  const { rows } = await requirePool().query(
-    `select id, name, started_at, ended_at, status from sessions where id = $1`,
-    [id]
-  )
-  const r = rows[0]
-  if (!r) return null
-  return {
-    id: Number(r.id),
-    name: r.name,
-    startedAt: r.started_at.toISOString(),
-    endedAt: r.ended_at ? r.ended_at.toISOString() : null,
-    status: r.status
-  }
-}
+// ---------------------------------------------------------------- sessions (by TigerData id)
 
 export async function deleteSessionRows(id: number): Promise<void> {
   await requirePool().query(`delete from sessions where id = $1`, [id])
@@ -269,154 +230,19 @@ export async function expiredSessionIds(days: number): Promise<number[]> {
   return rows.map((r) => Number(r.id))
 }
 
-// ---------------------------------------------------------------- captures
+// ---------------------------------------------------------------- search
 
-export interface CaptureMeta {
-  appName?: string | null
-  windowTitle?: string | null
-  url?: string | null
-  imageHash: string
-}
-
-export async function insertPendingCapture(
-  sessionId: number,
-  path: string,
-  meta: CaptureMeta
-): Promise<number> {
-  const { rows } = await requirePool().query(
-    `insert into captures (session_id, screenshot_path, app_name, window_title, url, image_hash, status)
-     values ($1, $2, $3, $4, $5, $6, 'pending') returning id`,
-    [
-      sessionId,
-      path,
-      meta.appName ?? null,
-      meta.windowTitle ?? null,
-      meta.url ?? null,
-      meta.imageHash
-    ]
-  )
-  return Number(rows[0].id)
-}
-
-export async function setCapturePath(id: number, path: string): Promise<void> {
-  await requirePool().query(`update captures set screenshot_path = $2 where id = $1`, [id, path])
-}
-
-export async function setCaptureStatus(id: number, status: 'committed' | 'failed'): Promise<void> {
-  await requirePool().query(`update captures set status = $2 where id = $1`, [id, status])
-}
-
-export async function setCaptureNote(id: number, note: string, notePath: string): Promise<void> {
-  await requirePool().query(`update captures set note = $2, note_path = $3 where id = $1`, [
-    id,
-    note,
-    notePath
-  ])
-}
-
-export async function setIndexStatus(
-  ids: number[],
-  status: 'pending' | 'indexed' | 'failed'
-): Promise<void> {
-  if (ids.length === 0) return
-  await requirePool().query(`update captures set index_status = $2 where id = any($1::bigint[])`, [
-    ids,
-    status
-  ])
-}
-
-export async function pendingIndexCaptures(sessionId: number): Promise<number[]> {
-  const { rows } = await requirePool().query(
-    `select id from captures where session_id = $1 and status = 'committed'
-       and note_path is not null and index_status <> 'indexed' order by id`,
-    [sessionId]
-  )
-  return rows.map((r) => Number(r.id))
-}
-
-export async function capturePaths(
-  sessionId: number
-): Promise<{ id: number; path: string; status: string }[]> {
-  const { rows } = await requirePool().query(
-    `select id, screenshot_path, status from captures where session_id = $1`,
-    [sessionId]
-  )
-  return rows.map((r) => ({ id: Number(r.id), path: r.screenshot_path, status: r.status }))
-}
-
-export async function captureHashes(sessionId: number): Promise<string[]> {
-  const { rows } = await requirePool().query(
-    `select distinct image_hash from captures where session_id = $1 and image_hash is not null`,
-    [sessionId]
-  )
-  return rows.map((r) => r.image_hash as string)
-}
-
-export async function sessionExists(id: number): Promise<boolean> {
-  const { rows } = await requirePool().query(`select 1 from sessions where id = $1`, [id])
-  return rows.length > 0
-}
-
-export async function getCapture(id: number): Promise<{
-  id: number
-  sessionId: number
-  path: string
-  note: string | null
-  capturedAt: string
-} | null> {
-  const { rows } = await requirePool().query(
-    `select id, session_id, screenshot_path, note, captured_at from captures where id = $1 and status = 'committed'`,
-    [id]
-  )
-  const r = rows[0]
-  return r
-    ? {
-        id: Number(r.id),
-        sessionId: Number(r.session_id),
-        path: r.screenshot_path,
-        note: r.note,
-        capturedAt: r.captured_at.toISOString()
-      }
-    : null
-}
-
-// ---------------------------------------------------------------- notes & search
-
-export async function insertNote(n: {
-  sessionId: number
-  captureId?: number | null
-  actionId?: number | null
-  provenance: 'observed' | 'assistant'
-  topic?: string | null
-  body: string
-}): Promise<number> {
-  const { rows } = await requirePool().query(
-    `insert into notes (session_id, capture_id, action_id, provenance, topic, body)
-     values ($1, $2, $3, $4, $5, $6) returning id`,
-    [n.sessionId, n.captureId ?? null, n.actionId ?? null, n.provenance, n.topic ?? null, n.body]
-  )
-  return Number(rows[0].id)
-}
-
-export interface NoteHit {
-  id: number
-  sessionId: number
-  captureId: number | null
-  provenance: 'observed' | 'assistant'
-  topic: string | null
-  body: string
-  createdAt: string
-}
-
-/** Keyword search over notes (BM25 via pg_textsearch when available, else Postgres FTS). */
+/**
+ * Keyword search over uploaded notes, i.e. earlier sessions (BM25 via pg_textsearch
+ * when available, else Postgres FTS). The running session is searched locally.
+ */
 export async function searchNotes(
   query: string,
-  opts: { excludeCaptureId?: number | null; limit?: number } = {}
+  opts: { limit?: number } = {}
 ): Promise<NoteHit[]> {
   const q = query.trim()
   if (!q) return []
   const limit = opts.limit ?? 6
-  const exclude = opts.excludeCaptureId ?? null
   const p = requirePool()
   const cols = `id, session_id, capture_id, provenance, topic, body, created_at`
   let rows: Record<string, unknown>[] = []
@@ -424,9 +250,8 @@ export async function searchNotes(
     try {
       const res = await p.query(
         `select ${cols} from notes
-         where ($2::bigint is null or capture_id is distinct from $2)
-         order by body <@> to_bm25query($1, 'notes_body_bm25') limit $3`,
-        [q, exclude, limit]
+         order by body <@> to_bm25query($1, 'notes_body_bm25') limit $2`,
+        [q, limit]
       )
       rows = res.rows
     } catch (err) {
@@ -437,10 +262,9 @@ export async function searchNotes(
     const res = await p.query(
       `select ${cols} from notes
        where to_tsvector('english', body) @@ websearch_to_tsquery('english', $1)
-         and ($2::bigint is null or capture_id is distinct from $2)
        order by ts_rank(to_tsvector('english', body), websearch_to_tsquery('english', $1)) desc
-       limit $3`,
-      [q, exclude, limit]
+       limit $2`,
+      [q, limit]
     )
     rows = res.rows
   }
@@ -451,48 +275,12 @@ export async function searchNotes(
     provenance: r.provenance as NoteHit['provenance'],
     topic: (r.topic as string) ?? null,
     body: r.body as string,
-    createdAt: (r.created_at as Date).toISOString()
+    createdAt: (r.created_at as Date).toISOString(),
+    origin: 'remote' as const
   }))
 }
 
 // ---------------------------------------------------------------- activity (hypertable)
-
-export interface ActivityRow {
-  time: Date
-  sessionId: number
-  captureId: number | null
-  appName: string | null
-  windowTitle: string | null
-  url: string | null
-  topic: string | null
-  changed: boolean
-  dwellMs: number
-}
-
-export async function insertActivity(rows: ActivityRow[]): Promise<void> {
-  if (rows.length === 0) return
-  const values: unknown[] = []
-  const tuples = rows.map((r, i) => {
-    values.push(
-      r.time,
-      r.sessionId,
-      r.captureId,
-      r.appName,
-      r.windowTitle,
-      r.url,
-      r.topic,
-      r.changed,
-      r.dwellMs
-    )
-    const b = i * 9
-    return `($${b + 1}, $${b + 2}, $${b + 3}, $${b + 4}, $${b + 5}, $${b + 6}, $${b + 7}, $${b + 8}, $${b + 9})`
-  })
-  await requirePool().query(
-    `insert into screen_activity (time, session_id, capture_id, app_name, window_title, url, topic, changed, dwell_ms)
-     values ${tuples.join(', ')}`,
-    values
-  )
-}
 
 export async function insightsByTopic(
   sessionId: number,
@@ -535,127 +323,7 @@ export async function stuckSpots(sessionId: number, minDwellMs: number): Promise
     }))
 }
 
-// ---------------------------------------------------------------- suggestions & actions
-
-export async function insertSuggestionSet(s: {
-  sessionId: number
-  captureId: number | null
-  generationId: number
-  topic: string
-  suggestions: unknown
-}): Promise<number> {
-  const { rows } = await requirePool().query(
-    `insert into suggestion_sets (session_id, capture_id, generation_id, topic, suggestions)
-     values ($1, $2, $3, $4, $5) returning id`,
-    [s.sessionId, s.captureId, s.generationId, s.topic, JSON.stringify(s.suggestions)]
-  )
-  return Number(rows[0].id)
-}
-
-export async function setSuggestionStatus(
-  id: number,
-  status: 'shown' | 'dismissed' | 'stale' | 'selected'
-): Promise<void> {
-  await requirePool().query(`update suggestion_sets set status = $2 where id = $1`, [id, status])
-}
-
-export async function insertAction(a: {
-  sessionId: number
-  captureId: number | null
-  suggestionSetId: number | null
-  kind: string
-  prompt: string
-}): Promise<number> {
-  const { rows } = await requirePool().query(
-    `insert into actions (session_id, capture_id, suggestion_set_id, kind, prompt, status)
-     values ($1, $2, $3, $4, $5, 'pending') returning id`,
-    [a.sessionId, a.captureId, a.suggestionSetId, a.kind, a.prompt]
-  )
-  return Number(rows[0].id)
-}
-
-export async function finishAction(
-  id: number,
-  f: {
-    status: 'complete' | 'failed' | 'cancelled' | 'streaming'
-    result?: string | null
-    blocks?: unknown
-    sources?: unknown
-    tokensIn?: number | null
-    tokensOut?: number | null
-  }
-): Promise<void> {
-  await requirePool().query(
-    `update actions set status = $2, result = coalesce($3, result), blocks = coalesce($4, blocks),
-       sources = coalesce($5, sources), tokens_in = coalesce($6, tokens_in), tokens_out = coalesce($7, tokens_out),
-       completed_at = case when $2 in ('complete', 'failed', 'cancelled') then now() else completed_at end
-     where id = $1`,
-    [
-      id,
-      f.status,
-      f.result ?? null,
-      f.blocks === undefined ? null : JSON.stringify(f.blocks),
-      f.sources === undefined ? null : JSON.stringify(f.sources),
-      f.tokensIn ?? null,
-      f.tokensOut ?? null
-    ]
-  )
-}
-
-export async function timeline(sessionId: number): Promise<TimelineItem[]> {
-  const p = requirePool()
-  const seen = await p.query(
-    `select min(captured_at) as at, coalesce(window_title, app_name, 'Screen') as title,
-            coalesce(url, app_name, '') as detail, count(*)::int as n
-     from captures where session_id = $1 and status = 'committed'
-     group by coalesce(window_title, app_name, 'Screen'), coalesce(url, app_name, '')
-     order by at limit 40`,
-    [sessionId]
-  )
-  const asked = await p.query(
-    `select id, created_at, kind, prompt, status from actions where session_id = $1 order by created_at limit 40`,
-    [sessionId]
-  )
-  const items: TimelineItem[] = [
-    ...seen.rows.map((r, i) => ({
-      at: r.at.toISOString(),
-      kind: (i === 0 ? 'seen' : 'switched') as TimelineItem['kind'],
-      title: i === 0 ? `Read "${r.title}"` : `Switched to "${r.title}"`,
-      detail: `${r.n} capture${r.n === 1 ? '' : 's'}${r.detail ? ` · ${r.detail}` : ''}`
-    })),
-    ...asked.rows.map((r) => ({
-      at: r.created_at.toISOString(),
-      kind: 'asked' as const,
-      title: `You asked: ${String(r.prompt).slice(0, 80)}`,
-      detail: r.kind ?? '',
-      actionId: Number(r.id),
-      status: r.status
-    }))
-  ]
-  return items.sort((a, b) => a.at.localeCompare(b.at))
-}
-
-export async function sentToClaudeCount(sessionId: number): Promise<number> {
-  const { rows } = await requirePool().query(
-    `select (select count(*) from suggestion_sets where session_id = $1)
-          + (select count(*) from actions where session_id = $1)
-          + (select count(*) from captures where session_id = $1 and note is not null) as n`,
-    [sessionId]
-  )
-  return Number(rows[0].n)
-}
-
-export async function sessionStats(
-  sessionId: number
-): Promise<{ captures: number; answers: number; tabs: number }> {
-  const { rows } = await requirePool().query(
-    `select (select count(*) from captures where session_id = $1 and status = 'committed')::int as captures,
-            (select count(*) from actions where session_id = $1 and status = 'complete')::int as answers,
-            (select count(distinct coalesce(url, window_title)) from captures where session_id = $1)::int as tabs`,
-    [sessionId]
-  )
-  return rows[0]
-}
+// ---------------------------------------------------------------- health
 
 export async function ping(): Promise<number> {
   const t = Date.now()

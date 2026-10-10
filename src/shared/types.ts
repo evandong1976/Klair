@@ -64,7 +64,7 @@ export interface Notice {
 export type CheckStatus = 'ok' | 'warn' | 'fail' | 'unknown'
 
 export interface HealthCheck {
-  id: 'openrouter' | 'tigerdata' | 'graphify' | 'cache' | 'screen' | 'fnkey'
+  id: 'openrouter' | 'tigerdata' | 'local' | 'graphify' | 'cache' | 'screen' | 'fnkey'
   label: string
   status: CheckStatus
   detail: string
@@ -107,12 +107,20 @@ export interface KlairState {
   stats: { captures: number; answers: number; tabs: number }
 }
 
+/**
+ * Where an ended session stands with TigerData. Sessions are saved on the Mac (SQLite)
+ * while they run and uploaded when they end: local → uploading → synced, or failed
+ * (retried later).
+ */
+export type UploadStatus = 'local' | 'uploading' | 'synced' | 'failed'
+
 export interface SessionListItem {
   id: number
   name: string
   startedAt: string
   endedAt: string | null
   status: SessionInfo['status']
+  upload: { status: UploadStatus; error: string | null; remoteId: number | null }
 }
 
 export interface TimelineItem {

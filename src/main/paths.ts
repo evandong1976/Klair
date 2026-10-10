@@ -2,12 +2,20 @@ import { app } from 'electron'
 import { mkdirSync } from 'fs'
 import { join } from 'path'
 
-// Local layout (screenshots never leave the Mac):
-//   <userData>/sessions/<id>/shots/*.png     screenshots
-//   <userData>/sessions/<id>/notes/*.md      notes Graphify indexes
-//   <userData>/sessions/<id>/graphify-out/   Graphify's graph
+// Local layout (screenshots never leave the Mac). <id> is the session's id in the
+// local SQLite store (local.ts); the "local-" prefix keeps these apart from folders
+// older builds named after TigerData ids.
+//   <userData>/sessions/local-<id>/shots/*.png     screenshots
+//   <userData>/sessions/local-<id>/notes/*.md      notes Graphify indexes
+//   <userData>/sessions/local-<id>/graphify-out/   Graphify's graph
+export const SESSION_DIR_PREFIX = 'local-'
+
+export function sessionsRoot(): string {
+  return join(app.getPath('userData'), 'sessions')
+}
+
 export function sessionDir(sessionId: number): string {
-  return join(app.getPath('userData'), 'sessions', String(sessionId))
+  return join(sessionsRoot(), `${SESSION_DIR_PREFIX}${sessionId}`)
 }
 
 export function shotsDir(sessionId: number): string {

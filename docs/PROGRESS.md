@@ -1,14 +1,14 @@
 # Klair build progress
 
-## Handoff (updated 2026-10-10 18:05 ET, by Mac session · claude-opus-5-5)
-- **Milestone:** 8 (prove it) started on the Mac. The packaged app (`pnpm app`) launches; health: screen=ok, openrouter=ok, graphify=ok, cache=ok, fnkey=warn (waiting on the Input Monitoring grant), tigerdata=fail (network, see Broken).
-- **Just finished:** permission and startup fixes. The fn addon compiles on macOS 26 / Electron 39 and is bundled; the fn row's Allow now registers Klair with Input Monitoring and Check again picks up the grant without a restart; `pnpm app` copies env files into the app's data folder; a second launch exits immediately instead of starting a second Klair.
+## Handoff (updated 2026-10-10 18:55 ET, by Mac session · claude-opus-5-5)
+- **Milestone:** 8 (prove it) in progress on the Mac.
+- **Just finished:** SQLite-first sessions. A running session writes only to SQLite on the Mac (`src/main/local.ts`, `userData/klair.db`, FTS5 search). When it ends, `src/main/upload.ts` copies it to TigerData in one transaction and the local session records its TigerData id (`remote_id`). Failed uploads retry on start, hourly and on Check again; abandoned sessions are ended and uploaded on start. TigerData is no longer needed to start a session. Unit tests cover the store; the upload was tested against a throwaway local Postgres 17 (rows, id remapping, replace-on-retry, search, delete, offline failure and queued deletes).
 - **In progress:** nothing half-done
-- **Next step:** grant Input Monitoring to Klair, press Check again, confirm fn opens the panel. Get TigerData reachable, then walk the rest of "Verify on the Mac".
-- **Broken / failing:** TigerData times out from the current network: outbound TCP to port 31846 is blocked (portquiz.net:31846 also times out; github.com:443 works). Use another network, a phone hotspot or a VPN. Not a code issue.
+- **Next step:** run a real session with TigerData reachable, end it, and check the Sessions window says "also in TigerData" and the console prints `tigerdata: uploaded session …`. Then "resume a session" (pull back from TigerData by `remote_id`), which the user deferred.
+- **Broken / failing:** TigerData's port 31846 is blocked from some networks (see 2026-10-10 notes); sessions now just wait locally and upload later.
 - **Decisions made this session:** see the Decisions log
-- **Blocked on / questions for the user:** a network that allows TigerData's port
-- **How to verify current state:** `pnpm install && pnpm typecheck && pnpm lint && pnpm test && pnpm build:native && pnpm app`
+- **Blocked on / questions for the user:** none
+- **How to verify current state:** `pnpm install && pnpm typecheck && pnpm lint && pnpm test && pnpm build`
 
 ---
 
@@ -50,3 +50,6 @@
 - 2026-10-10: the fn health check retries the event tap, and the Allow button sends the Input Monitoring request; only that request makes Klair appear in System Settings.
 - 2026-10-10: a second launch exits with `app.exit(0)` and focuses the Start window of the running Klair.
 - 2026-10-10: the Screen recording row says which app macOS files the grant under (in `pnpm dev`, the terminal's host app, e.g. Visual Studio Code) and that it must be quit and reopened; macOS ignores a new grant until then.
+- 2026-10-10: SQLite-first sessions (user request). Live writes go to `local.ts`; TigerData receives each session when it ends (`upload.ts`) and serves earlier-session search, insights for uploaded sessions and retention. Local copies are kept until retention (user's choice); "resume" (pull a session back) is deferred. This replaces "TigerData replaces SQLite for canonical records" above.
+- 2026-10-10: session folders are `sessions/local-<id>` (local SQLite ids), so they can't collide with older folders named after TigerData ids.
+- 2026-10-10: TigerData schema additions for uploads: `sessions.local_key` (unique; a retried upload replaces the earlier copy) and `local_id` on captures, suggestion_sets, actions and notes (id remapping in one round trip per table).

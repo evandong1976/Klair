@@ -10,15 +10,16 @@ A background macOS assistant that keeps you on your current screen. A see-throug
 
 ## Stack
 
-| Layer             | Technology                                                                                      | Where                                                    |
-| ----------------- | ----------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
-| Desktop app       | Electron + electron-vite, pnpm                                                                  | `src/main`, `src/preload`                                |
-| Interface         | React + TypeScript + Tailwind v4                                                                | `src/renderer`                                           |
-| AI                | Vercel AI SDK via OpenRouter (Gemini 3.5 Flash-Lite for screen notes, GPT-5.4 mini for answers) | `src/main/ai.ts`, `suggest.ts`, `execute.ts`, `notes.ts` |
-| Database          | TigerData (Postgres + TimescaleDB): canonical records, activity time-series, BM25 note search   | `src/main/db.ts`                                         |
-| Cache             | SQLite (`node:sqlite`): screenshot hash → note, safe to delete                                  | `src/main/cache.ts`                                      |
-| Context retrieval | Graphify CLI + TigerData search, merged                                                         | `src/main/graphify.ts`, `retrieve.ts`                    |
-| fn key            | Optional native addon (CGEventTap)                                                              | `native/fn-key`                                          |
+| Layer              | Technology                                                                                                                      | Where                                                    |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
+| Desktop app        | Electron + electron-vite, pnpm                                                                                                  | `src/main`, `src/preload`                                |
+| Interface          | React + TypeScript + Tailwind v4                                                                                                | `src/renderer`                                           |
+| AI                 | Vercel AI SDK via OpenRouter (Gemini 3.5 Flash-Lite for screen notes, GPT-5.4 mini for answers)                                 | `src/main/ai.ts`, `suggest.ts`, `execute.ts`, `notes.ts` |
+| Live session store | SQLite (`node:sqlite`, FTS5): the running session, uploaded when it ends                                                        | `src/main/local.ts`                                      |
+| Database           | TigerData (Postgres + TimescaleDB): ended sessions, activity time-series, insights aggregate, BM25 search over earlier sessions | `src/main/db.ts`, `upload.ts`                            |
+| Cache              | SQLite (`node:sqlite`): screenshot hash → note, safe to delete                                                                  | `src/main/cache.ts`                                      |
+| Context retrieval  | Graphify CLI + local search (this session) + TigerData search (earlier sessions), merged                                        | `src/main/graphify.ts`, `retrieve.ts`                    |
+| fn key             | Optional native addon (CGEventTap)                                                                                              | `native/fn-key`                                          |
 
 ## Setup
 
@@ -35,7 +36,7 @@ pnpm dev
    tiger service fork <team-service-id> --now --name klair-<you>
    tiger db uri <fork-id> --with-password      # → DATABASE_URL
    ```
-   Tables, the hypertable, the continuous aggregate, retention and the BM25 index are created on start. The console prints any optional feature the service lacks. Without `DATABASE_URL`, Klair won't start a session: it shows "This session isn't being saved".
+   Tables, the hypertable, the continuous aggregate, retention and the BM25 index are created on start. The console prints any optional feature the service lacks. A running session is saved on the Mac (SQLite) and uploaded to TigerData when it ends, so Klair still starts without `DATABASE_URL` or when TigerData is unreachable; those sessions upload once it's back (on start, hourly, and on **Check again**).
 3. **Graphify** (a Python tool, so there's no Homebrew formula; use pipx from Homebrew):
    ```bash
    brew install pipx
@@ -71,17 +72,18 @@ Quit `pnpm dev` first (only one Klair runs at a time). The app starts outside th
 4. Tap **fn** / **⌃⌥K**: the flower blooms and the panel shows _Where you are_ + three ideas.
 5. Press **⌘2** (the hands-on idea). The answer streams in as a slider demo plus code. Drag the slider, try **⌥3** (overshoot), **⌘C** copies the code.
 6. Press **esc**: the panel closes and focus returns to the article.
-7. Open the menu bar popover › **All sessions** (⌘O). The timeline shows the capture, _You asked_ and _Klair's answer_. **Session insights** shows time on topic and the stuck spot from the TigerData continuous aggregate.
-8. Switch back to the _Machine learning_ tab and open Klair. Ideas and answers cite "Earlier tab · …" from TigerData search and Graphify.
+7. Open the menu bar popover › **All sessions** (⌘O). The timeline shows the capture, _You asked_ and _Klair's answer_. **Session insights** shows time on topic and the stuck spot: read on the Mac while the session runs, and from the TigerData continuous aggregate once it has ended and uploaded.
+8. Switch back to the _Machine learning_ tab and open Klair. Ideas and answers cite "Earlier tab · …" from local search and Graphify, and "Earlier session · …" from TigerData.
 
 **Token measurement:** run the demo twice, once normally and once with `KLAIR_BASELINE=full`, then compare `inputTokens` in `~/Library/Application Support/klair/metrics.jsonl`. For Graphify's indexing cost, set `GRAPHIFY_OPENROUTER_KEY` so it shows separately in OpenRouter, or run `graphify benchmark <session>/graphify-out/graph.json`.
 
 ## Where data lives
 
-- **Screenshots:** this Mac only, at `~/Library/Application Support/klair/sessions/<id>/shots/`.
-- **Notes, prompts, answers:** your TigerData database.
+- **Screenshots:** this Mac only, at `~/Library/Application Support/Klair/sessions/local-<id>/shots/`.
+- **The running session** (captures, notes, ideas, answers, activity): SQLite on this Mac, `~/Library/Application Support/Klair/klair.db`.
+- **Ended sessions:** uploaded in full to your TigerData database, in one transaction. The local copy stays until retention, and each local session records its TigerData id (for resuming a session later). The Sessions window shows whether a session has been uploaded.
 - **Sent to AI models (Google and OpenAI by default, via OpenRouter):** each new screen (for a short note), plus the relevant notes for ideas and answers. Graphify extraction also uses OpenRouter.
-- **Deleting a session** removes its TigerData rows, screenshots, notes, Graphify index and cache entries. Sessions older than `KLAIR_RETENTION_DAYS` are removed automatically.
+- **Deleting a session** removes its local rows and TigerData copy (queued if TigerData is unreachable), screenshots, notes, Graphify index and cache entries. Sessions older than `KLAIR_RETENTION_DAYS` are removed automatically.
 
 ## Scripts
 
@@ -93,5 +95,5 @@ Quit `pnpm dev` first (only one Klair runs at a time). The app starts outside th
 ## Troubleshooting
 
 - **The ⌘ keys do nothing:** they only work while the panel is open and focused. Click the panel once if another app grabbed focus.
-- **No ideas appear:** check the Start window. You need TigerData green and Claude green, and the screen must stay unchanged for the pause time.
+- **No ideas appear:** check the Start window. You need "This Mac" and Claude green (TigerData only matters once a session ends), and the screen must stay unchanged for the pause time.
 - **"macOS is using the fn key":** System Settings › Keyboard › "Press 🌐 key to" › Do Nothing, or keep using ⌃⌥K.

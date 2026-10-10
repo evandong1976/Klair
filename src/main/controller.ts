@@ -5,6 +5,8 @@ import { join } from 'path'
 import type { AnswerOutput } from '../shared/blocks'
 import type {
   AnswerState,
+  InsightRow,
+  StuckSpot,
   Idea,
   KlairState,
   Notice,
@@ -16,14 +18,16 @@ import { CaptureLoop, type Frame } from './capture'
 import { config } from './config'
 import { ControllerCore, type Effect } from './controller-core'
 import * as db from './db'
+import * as store from './local'
 import { answerToText, runAssistance } from './execute'
 import { lastHealth, runHealth } from './health'
 import { cancelIndex, scheduleIndex } from './indexer'
 import { makeVisionNote, writeNoteFile, type VisionNote } from './notes'
-import { notesDir, sessionDir, shotsDir } from './paths'
+import { notesDir, SESSION_DIR_PREFIX, sessionDir, sessionsRoot, shotsDir } from './paths'
 import { retrieve } from './retrieve'
 import { getState, setState } from './state'
 import { suggestionsFromNote } from './suggest'
+import { deleteRemote, uploadPending, uploadSession } from './upload'
 import * as windows from './windows'
 
 // The background controller: owns the session, the suggestion set, execution state
@@ -51,7 +55,7 @@ let statsTimer: NodeJS.Timeout | null = null
 let lastChangeAt = Date.now()
 let currentTopic: string | null = null
 let lastMeta: Frame['meta'] = { appName: null, windowTitle: null, url: null }
-let activity: db.ActivityRow[] = []
+let activity: store.ActivityRow[] = []
 const captures = new Map<number, CaptureMem>()
 const notePromises = new Map<number, Promise<VisionNote | null>>()
 const setDbIds = new Map<string, number>()
@@ -89,13 +93,14 @@ function apply(effects: Effect[]): void {
         setState({ suggestions: e.set, nudge: getState().panel === 'closed' })
         if (sessionId) {
           const sid = sessionId
-          db.insertSuggestionSet({
-            sessionId: sid,
-            captureId: e.set.captureId,
-            generationId: e.set.generationId,
-            topic: e.set.topic,
-            suggestions: e.set
-          })
+          store
+            .insertSuggestionSet({
+              sessionId: sid,
+              captureId: e.set.captureId,
+              generationId: e.set.generationId,
+              topic: e.set.topic,
+              suggestions: e.set
+            })
             .then((id) => setDbIds.set(e.set.id, id))
             .catch((err) => console.warn('suggestion set not saved:', err.message))
         }
@@ -103,7 +108,7 @@ function apply(effects: Effect[]): void {
       case 'invalidateSuggestions': {
         const dbId = setDbIds.get(e.set.id)
         if (dbId)
-          void db
+          void store
             .setSuggestionStatus(dbId, e.reason === 'changed' ? 'stale' : 'dismissed')
             .catch(() => {})
         const wasNudging = getState().nudge
@@ -140,15 +145,15 @@ export async function startSession(name: string): Promise<void> {
     notice({ kind: 'screen-access' })
     return
   }
-  if (health.checks.find((c) => c.id === 'tigerdata')?.status === 'fail') {
-    setState({
-      saving: false,
-      notice: { kind: 'not-saving', detail: 'TigerData is not connected' }
-    })
+  // The session is saved on this Mac (SQLite) and uploaded to TigerData when it ends,
+  // so only the local store has to work to start.
+  const localStore = store.localStatus()
+  if (!localStore.ok) {
+    setState({ saving: false, notice: { kind: 'not-saving', detail: localStore.detail } })
     return
   }
   try {
-    const s = await db.createSession(name.trim() || 'Session')
+    const s = await store.createSession(name.trim() || 'Session')
     sessionId = s.id
     captures.clear()
     notePromises.clear()
@@ -195,14 +200,14 @@ export async function pause(): Promise<void> {
   loop?.stop()
   core.setObserving(false)
   setState({ observing: 'paused', nudge: false })
-  await db.setSessionStatus(sessionId, 'paused').catch(() => {})
+  await store.setSessionStatus(sessionId, 'paused').catch(() => {})
 }
 
 export async function resume(): Promise<void> {
   if (!sessionId || getState().observing !== 'paused') return
   setState({ observing: 'on' })
   beginObserving()
-  await db.setSessionStatus(sessionId, 'active').catch(() => {})
+  await store.setSessionStatus(sessionId, 'active').catch(() => {})
 }
 
 export async function togglePause(): Promise<void> {
@@ -227,47 +232,71 @@ export async function endSession(): Promise<void> {
     panel: 'closed'
   })
   windows.hidePanel()
-  await db.setSessionStatus(id, 'ended').catch(() => {})
+  await store.setSessionStatus(id, 'ended').catch(() => {})
   scheduleIndex(id, { now: true })
+  void uploadSession(id)
 }
 
 export async function deleteSession(id: number): Promise<void> {
   if (id === sessionId) await endSession()
   cancelIndex(id)
   let hashes: string[] = []
+  let remoteId: number | null = null
   try {
-    hashes = await db.captureHashes(id)
-    await db.deleteSessionRows(id)
+    remoteId = (await store.getSession(id))?.upload.remoteId ?? null
+    hashes = await store.captureHashes(id)
+    await store.deleteSessionRows(id)
   } catch (err) {
     console.error('delete session rows failed:', err)
     throw err
   }
+  // Its TigerData copy goes too (queued if TigerData can't be reached right now).
+  if (remoteId) await deleteRemote(remoteId)
   for (const h of hashes) cache.delete(`note:${h}`)
   await rm(sessionDir(id), { recursive: true, force: true })
 }
 
-/** Delete expired sessions everywhere: TigerData rows, local files, Graphify output, cache. */
+/** Delete expired sessions everywhere: local rows and files, Graphify output, cache, TigerData. */
 export async function retentionSweep(): Promise<void> {
   try {
-    for (const id of await db.expiredSessionIds(config.retentionDays)) await deleteSession(id)
+    for (const id of await store.expiredSessionIds(config.retentionDays)) await deleteSession(id)
   } catch (err) {
     console.warn('retention sweep failed:', (err as Error).message)
   }
+  // TigerData sessions with no copy on this Mac (older builds, other machines).
+  if (!db.getPool()) return
+  try {
+    for (const id of await db.expiredSessionIds(config.retentionDays))
+      await db.deleteSessionRows(id)
+  } catch (err) {
+    console.warn('tigerdata retention sweep failed:', (err as Error).message)
+  }
+}
+
+/** End sessions a crash or quit left open, then upload everything not yet in TigerData. */
+export async function syncEnded(): Promise<void> {
+  try {
+    await store.endAbandonedSessions(sessionId)
+  } catch (err) {
+    console.warn('could not close abandoned sessions:', (err as Error).message)
+  }
+  await uploadPending()
 }
 
 /** Fix incomplete writes from a crash: orphan files, half-committed rows, deleted sessions. */
 export async function reconcileLocal(): Promise<void> {
-  const root = join(sessionDir(0), '..')
+  const root = sessionsRoot()
   if (!existsSync(root)) return
   for (const name of await readdir(root)) {
-    const id = Number(name)
+    if (!name.startsWith(SESSION_DIR_PREFIX)) continue // folders from older builds
+    const id = Number(name.slice(SESSION_DIR_PREFIX.length))
     if (!Number.isInteger(id) || id <= 0) continue
     try {
-      if (!(await db.sessionExists(id))) {
+      if (!(await store.sessionExists(id))) {
         await rm(sessionDir(id), { recursive: true, force: true })
         continue
       }
-      const rows = await db.capturePaths(id)
+      const rows = await store.capturePaths(id)
       const known = new Set(rows.map((r) => r.path))
       const dir = shotsDir(id)
       for (const f of await readdir(dir)) {
@@ -276,7 +305,7 @@ export async function reconcileLocal(): Promise<void> {
       }
       for (const r of rows) {
         if (r.status !== 'pending') continue
-        await db.setCaptureStatus(r.id, existsSync(r.path) ? 'committed' : 'failed')
+        await store.setCaptureStatus(r.id, existsSync(r.path) ? 'committed' : 'failed')
       }
     } catch (err) {
       console.warn(`reconcile session ${id} failed:`, (err as Error).message)
@@ -286,12 +315,19 @@ export async function reconcileLocal(): Promise<void> {
 
 // ------------------------------------------------------------------ capture → persist → note
 
+/** Save buffered activity before quitting (SQLite writes are synchronous). */
+export function flushOnQuit(): void {
+  if (activity.length === 0) return
+  void store.insertActivity(activity).catch(() => {})
+  activity = []
+}
+
 async function flushActivity(): Promise<void> {
   if (activity.length === 0) return
   const batch = activity
   activity = []
   try {
-    await db.insertActivity(batch)
+    await store.insertActivity(batch)
   } catch (err) {
     console.warn('activity not saved:', (err as Error).message)
   }
@@ -300,7 +336,7 @@ async function flushActivity(): Promise<void> {
 async function refreshStats(): Promise<void> {
   if (!sessionId) return
   try {
-    setState({ stats: await db.sessionStats(sessionId) })
+    setState({ stats: await store.sessionStats(sessionId) })
   } catch {
     /* stats are cosmetic */
   }
@@ -334,7 +370,7 @@ async function onFrame(frame: Frame): Promise<void> {
   if (!sid || !getState().saving) return
   const now = Date.now()
   lastMeta = frame.meta
-  const row: db.ActivityRow = {
+  const row: store.ActivityRow = {
     time: frame.at,
     sessionId: sid,
     captureId: null,
@@ -354,8 +390,8 @@ async function onFrame(frame: Frame): Promise<void> {
   const path = join(shotsDir(sid), `${frame.at.getTime()}-${frame.hash.slice(0, 10)}.png`)
   try {
     await writeFile(path, frame.png)
-    id = await db.insertPendingCapture(sid, path, { ...frame.meta, imageHash: frame.hash })
-    await db.setCaptureStatus(id, 'committed')
+    id = await store.insertPendingCapture(sid, path, { ...frame.meta, imageHash: frame.hash })
+    await store.setCaptureStatus(id, 'committed')
   } catch (err) {
     await unlink(path).catch(() => {})
     persistenceFailed(err)
@@ -388,8 +424,8 @@ async function noteFor(sid: number, mem: CaptureMem, frame: Frame): Promise<Visi
       },
       note.note
     )
-    await db.setCaptureNote(mem.id, note.note, file)
-    await db.insertNote({
+    await store.setCaptureNote(mem.id, note.note, file)
+    await store.insertNote({
       sessionId: sid,
       captureId: mem.id,
       provenance: 'observed',
@@ -500,7 +536,7 @@ async function captureImage(
   let path = captures.get(captureId)?.path
   let noteText = note?.note ?? ''
   if (!path) {
-    const row = await db.getCapture(captureId).catch(() => null)
+    const row = await store.getCapture(captureId).catch(() => null)
     path = row?.path
     noteText ||= row?.note ?? ''
   }
@@ -545,7 +581,7 @@ async function execute(run: {
   let actionId: number | null = null
   let actionSaved: Promise<number | null> = Promise.resolve(null)
   if (sid) {
-    actionSaved = db
+    actionSaved = store
       .insertAction({
         sessionId: sid,
         captureId: run.captureId,
@@ -558,7 +594,7 @@ async function execute(run: {
         return null
       })
     const dbSet = run.set ? setDbIds.get(run.set.id) : undefined
-    if (dbSet) void db.setSuggestionStatus(dbSet, 'selected').catch(() => {})
+    if (dbSet) void store.setSuggestionStatus(dbSet, 'selected').catch(() => {})
   }
 
   try {
@@ -636,7 +672,7 @@ async function execute(run: {
     setState({ answer: done, lastAnswerTitle: result.output.title })
     if (sid && actionId) {
       const text = answerToText(result.output)
-      await db.finishAction(actionId, {
+      await store.finishAction(actionId, {
         status: 'complete',
         result: text,
         blocks: result.output.blocks,
@@ -656,7 +692,7 @@ async function execute(run: {
         text
       )
       void file
-      await db.insertNote({
+      await store.insertNote({
         sessionId: sid,
         captureId: run.captureId,
         actionId,
@@ -687,7 +723,7 @@ async function execute(run: {
     actionId ??= await actionSaved
     if (actionId) {
       const partial = getState().answer
-      await db
+      await store
         .finishAction(actionId, {
           status: cancelled ? 'cancelled' : 'failed',
           blocks: partial?.blocks?.length ? partial.blocks : undefined
@@ -716,8 +752,7 @@ export function cancelExecution(markCancelled = true): void {
 export async function retry(): Promise<void> {
   const s = getState()
   if (s.notice?.kind === 'not-saving' || !s.saving) {
-    const h = await runHealth({ skipModel: true })
-    if (h.checks.find((c) => c.id === 'tigerdata')?.status !== 'fail') {
+    if (store.localStatus().ok) {
       setState({ saving: true, notice: null })
       if (sessionId && s.observing === 'on') beginObserving()
     }
@@ -748,14 +783,33 @@ export async function reshape(text: string): Promise<void> {
 // ------------------------------------------------------------------ sessions window
 
 export async function sessionDetail(id: number): Promise<SessionDetail | null> {
-  const session = await db.getSession(id)
+  const session = await store.getSession(id)
   if (!session) return null
-  const [timeline, sent, byTopic, stuck] = await Promise.all([
-    db.timeline(id),
-    db.sentToClaudeCount(id),
-    db.insightsByTopic(id, config.captureMs).catch(() => ({ rows: [], source: 'raw' as const })),
-    db.stuckSpots(id, Math.min(config.dwellMs, 30_000)).catch(() => [])
+  const stuckMs = Math.min(config.dwellMs, 30_000)
+  const localInsights = (): Promise<[InsightRow[], StuckSpot[], 'raw']> =>
+    Promise.all([
+      store.insightsByTopic(id, config.captureMs).then((r) => r.rows),
+      store.stuckSpots(id, stuckMs),
+      'raw' as const
+    ])
+  // An uploaded session's insights come from TigerData (the activity_by_minute
+  // continuous aggregate); a running or not-yet-uploaded one is read on this Mac.
+  const remoteId = session.upload.status === 'synced' ? session.upload.remoteId : null
+  const insights = remoteId
+    ? Promise.all([
+        db.insightsByTopic(remoteId, config.captureMs),
+        db.stuckSpots(remoteId, stuckMs)
+      ]).then(
+        ([t, st]): [InsightRow[], StuckSpot[], 'aggregate' | 'raw'] => [t.rows, st, t.source],
+        localInsights
+      )
+    : localInsights()
+  const [timeline, sent, [byTopicRows, stuck, source]] = await Promise.all([
+    store.timeline(id),
+    store.sentToClaudeCount(id),
+    insights.catch((): [InsightRow[], StuckSpot[], 'raw'] => [[], [], 'raw'])
   ])
+  const byTopic = { rows: byTopicRows, source }
   const live = id === sessionId
   const lastSeen = [...timeline].reverse().find((t) => t.kind !== 'asked')
   return {
@@ -776,7 +830,7 @@ export async function sessionDetail(id: number): Promise<SessionDetail | null> {
 }
 
 export async function shotDataUrl(captureId: number): Promise<string | null> {
-  const row = await db.getCapture(captureId).catch(() => null)
+  const row = await store.getCapture(captureId).catch(() => null)
   if (!row || !existsSync(row.path)) return null
   return `data:image/png;base64,${(await readFile(row.path)).toString('base64')}`
 }

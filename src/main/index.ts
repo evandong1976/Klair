@@ -2,7 +2,6 @@ import './env'
 import { app, BrowserWindow } from 'electron'
 import { electronApp, optimizer } from '@electron-toolkit/utils'
 import * as c from './controller'
-import { getPool } from './db'
 import { runHealth } from './health'
 import { registerIpc } from './ipc'
 import { registerShortcuts, unregisterShortcuts } from './shortcuts'
@@ -62,10 +61,15 @@ app.whenReady().then(async () => {
 
   const health = await runHealth()
   console.log('klair health:', health.checks.map((ch) => `${ch.id}=${ch.status}`).join(' '))
-  if (health.checks.find((ch) => ch.id === 'tigerdata')?.status !== 'fail' && getPool()) {
+  if (health.checks.find((ch) => ch.id === 'local')?.status === 'ok') {
+    // Sessions live in SQLite on this Mac; TigerData gets each one when it ends.
     await c.reconcileLocal()
     await c.retentionSweep()
-    setInterval(() => void c.retentionSweep(), 60 * 60_000)
+    void c.syncEnded() // sessions a quit or crash left open, and uploads that failed
+    setInterval(() => {
+      void c.retentionSweep()
+      void c.syncEnded()
+    }, 60 * 60_000)
   } else if (!getState().session) {
     setState({ saving: false })
   }
@@ -77,6 +81,7 @@ app.whenReady().then(async () => {
 
 app.on('will-quit', () => {
   unregisterShortcuts()
+  c.flushOnQuit()
 })
 
 // Klair lives in the menu bar; closing its windows doesn't quit it.

@@ -6,10 +6,11 @@ import {
   type SettingsPane
 } from '../shared/types'
 import * as c from './controller'
-import { listSessions } from './db'
+import { listSessions } from './local'
 import { retryFnKey } from './fnkey'
 import { lastHealth, runHealth } from './health'
 import { setToggleKey } from './shortcuts'
+import { uploadPending } from './upload'
 import { getState } from './state'
 import * as windows from './windows'
 
@@ -55,7 +56,12 @@ const handlers: Handlers = {
   setQuiet: async (on) => c.setQuiet(Boolean(on)),
   setToggleKey: async (accel) => setToggleKey(String(accel)),
   getHealth: async () => lastHealth() ?? runHealth(),
-  runHealth: () => runHealth(),
+  runHealth: async () => {
+    const h = await runHealth()
+    // "Check again" doubles as "retry uploads" once TigerData is reachable.
+    if (h.checks.find((ch) => ch.id === 'tigerdata')?.status !== 'fail') void uploadPending()
+    return h
+  },
   openSettings: async (pane) => {
     // macOS only lists an app under Screen Recording after it has tried to capture,
     // and checking the status doesn't count. One throwaway capture registers Klair

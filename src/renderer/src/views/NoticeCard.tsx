@@ -51,8 +51,8 @@ export function NoticeCard({ notice }: { notice: Notice }): React.JSX.Element | 
         <div className={`${card} outline-2 outline-danger-outline -outline-offset-2`}>
           <span className="text-[15.5px] font-extrabold">This session isn&apos;t being saved</span>
           <span className="text-[13.5px] leading-[1.5] text-ink-2">
-            Klair can&apos;t reach your TigerData database, so it has stopped capturing. Everything
-            saved so far is safe.
+            Klair can&apos;t write to its session store on this Mac, so it has stopped capturing.
+            Everything saved so far is safe.
             {notice.detail ? (
               <span className="block text-[12px] text-muted mt-1">{notice.detail}</span>
             ) : null}

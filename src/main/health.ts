@@ -7,6 +7,7 @@ import { config } from './config'
 import { capabilities, getPool, migrate, ping, timescaleVersion } from './db'
 import { retryFnKey } from './fnkey'
 import { graphifyAvailable } from './graphify'
+import { localStatus } from './local'
 import { recordMetric } from './metrics'
 
 // Checks every connection Klair depends on. Shown on the Start window; failures
@@ -75,7 +76,11 @@ async function checkOpenRouter(): Promise<HealthCheck> {
 async function checkTigerData(): Promise<HealthCheck> {
   const base = { id: 'tigerdata' as const, label: 'TigerData database' }
   if (!getPool()) {
-    return { ...base, status: 'fail', detail: 'DATABASE_URL is not set: sessions cannot be saved' }
+    return {
+      ...base,
+      status: 'fail',
+      detail: 'DATABASE_URL is not set: sessions stay on this Mac and are not uploaded'
+    }
   }
   try {
     const ms = await ping()
@@ -92,7 +97,11 @@ async function checkTigerData(): Promise<HealthCheck> {
     ]
     return { ...base, status: ts ? 'ok' : 'warn', detail: parts.join(' · ') }
   } catch (err) {
-    return { ...base, status: 'fail', detail: (err as Error).message.slice(0, 160) }
+    return {
+      ...base,
+      status: 'fail',
+      detail: `${(err as Error).message.slice(0, 140)} · sessions upload when it's reachable`
+    }
   }
 }
 
@@ -155,9 +164,16 @@ async function doRunHealth(opts: { skipModel?: boolean }): Promise<HealthReport>
     checkTigerData(),
     graphifyAvailable()
   ])
+  const local = localStatus()
   const checks: HealthCheck[] = [
     checkScreen(),
     checkFn(),
+    {
+      id: 'local',
+      label: 'This Mac (SQLite)',
+      status: local.ok ? 'ok' : 'fail',
+      detail: local.detail
+    },
     tiger,
     openrouter,
     {
