@@ -68,8 +68,17 @@ test('web pages and other extensions are refused', async () => {
     (await call('POST', '/v1/page', { origin: 'chrome-extension://other', body: page() })).status,
     403
   )
-  assert.equal((await call('POST', '/v1/page', { body: page() })).status, 403)
   assert.equal(pages.length, n)
+  assert.equal(bridge.info().lastRefused?.origin, 'chrome-extension://other')
+  assert.equal(bridge.info().lastRefused?.status, 403)
+})
+
+test('requests without an Origin are accepted (Chrome may omit it for extensions)', async () => {
+  const s = await call('GET', '/v1/status')
+  assert.equal(s.status, 200)
+  const r = await call('POST', '/v1/page', { body: page({ title: 'no origin' }) })
+  assert.equal(r.status, 200)
+  assert.equal(pages.at(-1)?.title, 'no origin')
 })
 
 test('another host name is refused (DNS rebinding)', async () => {

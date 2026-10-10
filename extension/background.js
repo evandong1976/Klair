@@ -35,7 +35,8 @@ async function checkIn() {
   let klair = { offline: true }
   try {
     const res = await fetch(`${KLAIR}/v1/status`)
-    if (res.ok) klair = await res.json()
+    // Reachable but refused (e.g. 403: Klair expects a different extension id).
+    klair = res.ok ? await res.json() : { refused: res.status }
   } catch {
     // Klair isn't running
   }

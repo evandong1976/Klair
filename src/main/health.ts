@@ -167,6 +167,14 @@ function checkBrowser(): HealthCheck {
       : ''
     return { ...base, status: 'ok', detail: `Connected: full pages go into the session${last}` }
   }
+  const refused = b.lastRefused
+  if (refused && Date.now() - refused.at < 3 * 60_000) {
+    return {
+      ...base,
+      status: 'warn',
+      detail: `Refused a request from ${refused.origin ?? 'no origin'} (${refused.status}); expected chrome-extension://${config.extensionId}`
+    }
+  }
   return {
     ...base,
     status: 'warn',

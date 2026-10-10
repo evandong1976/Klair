@@ -19,6 +19,13 @@ function ago(at) {
 function showKlair(k) {
   if (!k || k.offline) {
     show('klair', 'fail', "Klair isn't running", 'Open the Klair app on this Mac.')
+  } else if (k.refused) {
+    show(
+      'klair',
+      'fail',
+      `Klair refused the extension (${k.refused})`,
+      "Klair's Start window shows why under Chrome extension."
+    )
   } else if (k.observing) {
     show('klair', 'ok', 'Session running', 'New pages are added to it.')
   } else if (k.session) {
@@ -31,6 +38,7 @@ function showKlair(k) {
 const RESULT = {
   200: ['ok', 'Added to the session'],
   409: ['warn', "Not added: Klair isn't observing"],
+  403: ['fail', 'Refused by Klair (extension id)'],
   0: ['fail', "Klair wasn't reachable"]
 }
 

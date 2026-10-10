@@ -2,10 +2,12 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { z } from 'zod'
 
 // The local endpoint the Chrome extension (extension/) talks to. It listens on
-// 127.0.0.1 only and accepts requests from one extension: Chrome stamps every request
-// from it with `Origin: chrome-extension://<id>`, which a web page can't forge, and the
-// manifest's "key" pins that id. The Host check stops DNS-rebinding pages from
-// reaching the port under another name.
+// 127.0.0.1 only. A request must carry either the extension's own origin
+// (`chrome-extension://<id>`, pinned by the manifest's "key") or no Origin at all:
+// Chrome may leave Origin off requests an extension makes under its host permissions,
+// while a web page can't hide its origin (browsers always send Origin on POST, and a
+// GET a page can't read gains it nothing). Any other origin is refused. The Host check
+// stops DNS-rebinding pages from reaching the port under another name.
 //
 //   GET  /v1/status   → { app: 'klair', session, observing }   (extension heartbeat)
 //   POST /v1/page     ← { url, title, text, description?, truncated? }
@@ -40,6 +42,8 @@ export interface BridgeInfo {
   /** Last request from the extension (any route), ms since epoch. */
   lastSeenAt: number | null
   lastPageAt: number | null
+  /** The last request refused, for diagnosing an extension that can't connect. */
+  lastRefused: { at: number; status: number; origin: string | null; host: string } | null
 }
 
 export class Bridge {
@@ -57,7 +61,8 @@ export class Bridge {
       error: null,
       port: opts.port,
       lastSeenAt: null,
-      lastPageAt: null
+      lastPageAt: null,
+      lastRefused: null
     }
   }
 
@@ -103,14 +108,16 @@ export class Bridge {
   private async handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
     const port = this.state.port
     const host = req.headers.host ?? ''
-    if (host !== `127.0.0.1:${port}` && host !== `localhost:${port}`) {
-      res.writeHead(421).end()
-      return
+    const origin = req.headers.origin ?? null
+    const refuse = (status: number): void => {
+      this.state.lastRefused = { at: Date.now(), status, origin, host }
+      console.warn(
+        `chrome bridge: refused ${req.method} ${req.url} (${status}) origin=${origin} host=${host}`
+      )
+      res.writeHead(status).end()
     }
-    if (req.headers.origin !== this.origin) {
-      res.writeHead(403).end()
-      return
-    }
+    if (host !== `127.0.0.1:${port}` && host !== `localhost:${port}`) return refuse(421)
+    if (origin !== null && origin !== this.origin) return refuse(403)
     this.state.lastSeenAt = Date.now()
     const path = (req.url ?? '').split('?')[0]
     if (req.method === 'OPTIONS') return this.send(res, 204)
