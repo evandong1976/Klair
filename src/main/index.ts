@@ -15,7 +15,12 @@ import * as windows from './windows'
 
 // app.quit() would still run whenReady below and start a second flower, tray and
 // fn tap; exit at once instead. The running Klair shows its Start window.
-if (!app.requestSingleInstanceLock()) app.exit(0)
+if (!app.requestSingleInstanceLock()) {
+  console.log(
+    'Klair is already running (quit it from the menu bar first); showing its Start window.'
+  )
+  app.exit(0)
+}
 app.on('second-instance', () => windows.openStart())
 
 app.whenReady().then(async () => {
