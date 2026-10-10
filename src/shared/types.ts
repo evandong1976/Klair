@@ -64,7 +64,7 @@ export interface Notice {
 export type CheckStatus = 'ok' | 'warn' | 'fail' | 'unknown'
 
 export interface HealthCheck {
-  id: 'openrouter' | 'tigerdata' | 'local' | 'graphify' | 'cache' | 'screen' | 'fnkey'
+  id: 'openrouter' | 'tigerdata' | 'local' | 'graphify' | 'cache' | 'screen' | 'fnkey' | 'browser'
   label: string
   status: CheckStatus
   detail: string

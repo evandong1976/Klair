@@ -125,6 +125,24 @@ alter table captures add column if not exists local_id bigint;
 alter table suggestion_sets add column if not exists local_id bigint;
 alter table actions add column if not exists local_id bigint;
 alter table notes add column if not exists local_id bigint;
+
+-- Full pages from the Chrome extension, and the page each screenshot shows.
+create table if not exists pages (
+  id bigint generated always as identity primary key,
+  session_id bigint not null references sessions(id) on delete cascade,
+  captured_at timestamptz not null default now(),
+  url text not null,
+  title text,
+  description text,
+  body text not null,
+  text_hash text,
+  truncated boolean not null default false,
+  note_path text,
+  index_status text not null default 'pending',
+  local_id bigint
+);
+create index if not exists pages_session_idx on pages (session_id, captured_at);
+alter table captures add column if not exists page_id bigint references pages(id) on delete set null;
 `
 
 async function tryStep(client: PoolClient, label: string, sql: string): Promise<boolean> {

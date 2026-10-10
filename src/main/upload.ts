@@ -35,17 +35,30 @@ async function copy(client: PoolClient, data: local.SessionExport): Promise<numb
   )
   const sid = Number(rows[0].id)
 
+  const pages = await insertRows(
+    client,
+    `insert into pages (session_id, captured_at, url, title, description, body, text_hash, truncated,
+       note_path, index_status, local_id)
+     select ${sid}, captured_at, url, title, description, body, text_hash, truncated,
+       note_path, index_status, id
+     from jsonb_to_recordset($1::jsonb) as x(id bigint, captured_at timestamptz, url text, title text,
+       description text, body text, text_hash text, truncated boolean, note_path text,
+       index_status text)
+     returning id, local_id`,
+    data.pages
+  )
+
   const captures = await insertRows(
     client,
     `insert into captures (session_id, captured_at, screenshot_path, note, app_name, window_title,
-       url, image_hash, status, index_status, note_path, local_id)
+       url, image_hash, status, index_status, note_path, page_id, local_id)
      select ${sid}, captured_at, screenshot_path, note, app_name, window_title,
-       url, image_hash, status, index_status, note_path, id
+       url, image_hash, status, index_status, note_path, page_id, id
      from jsonb_to_recordset($1::jsonb) as x(id bigint, captured_at timestamptz, screenshot_path text,
        note text, app_name text, window_title text, url text, image_hash text, status text,
-       index_status text, note_path text)
+       index_status text, note_path text, page_id bigint)
      returning id, local_id`,
-    data.captures
+    data.captures.map((r) => ({ ...r, page_id: remap(pages, r.page_id) }))
   )
 
   const sets = await insertRows(
@@ -125,6 +138,7 @@ async function doUpload(localId: number): Promise<boolean> {
     local.setUploadStatus(localId, 'synced', { remoteId })
     console.log(
       `tigerdata: uploaded session ${localId} → ${remoteId} (${data.captures.length} captures, ` +
+        `${data.pages.length} pages, ` +
         `${data.notes.length} notes, ${data.activity.length} activity rows, ${Date.now() - t} ms)`
     )
     if (capabilities.continuousAggregate) {

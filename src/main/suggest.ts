@@ -11,6 +11,8 @@ export function suggestionsFromNote(input: {
   generationId: number
   note: VisionNote
   capturedAt: string
+  /** Title of the Chrome page this screen shows, when its full text was matched. */
+  pageTitle?: string | null
 }): SuggestionSet {
   const id = randomUUID()
   const at = new Date(input.capturedAt).toLocaleTimeString([], {
@@ -25,7 +27,18 @@ export function suggestionsFromNote(input: {
     topic: input.note.topic,
     whereTitle: input.note.topic,
     whereRead: input.note.whereRead.slice(0, 240),
-    sources: [{ kind: 'screen', label: `On screen · ${at}`, captureId: input.captureId }],
+    sources: [
+      { kind: 'screen', label: `On screen · ${at}`, captureId: input.captureId },
+      ...(input.pageTitle
+        ? [
+            {
+              kind: 'screen' as const,
+              label: `Full page · ${input.pageTitle.slice(0, 40)}`,
+              captureId: input.captureId
+            }
+          ]
+        : [])
+    ],
     ideas: input.note.ideas.slice(0, 3).map((idea, i) => {
       const title = idea.title.slice(0, 60)
       const subtitle = idea.subtitle.slice(0, 90)

@@ -46,6 +46,7 @@ pnpm dev
    Klair finds `graphify` in `~/.local/bin`, `/opt/homebrew/bin` or your shell's PATH by itself. Set `GRAPHIFY_BIN` only if it's somewhere else. Without Graphify, answers still work using TigerData search and the current screen.
 4. **fn key (optional):** `pnpm build:native` builds `native/fn-key` against Electron, then grant Input Monitoring. Until then, use ⌃⌥K / ⌃⌥P / ⌃⌥Q.
 5. **Tiger MCP for builders (optional):** `tiger mcp install claude-code` lets Claude Code inspect the schema and test queries.
+6. **Chrome extension (optional):** in Chrome open `chrome://extensions`, turn on **Developer mode**, click **Load unpacked** and pick the repo's `extension/` folder. While a session is observing, every page you open in Chrome is sent to Klair in full (its whole rendered text, not just the part in view) and becomes part of the session. See [Chrome extension](#chrome-extension).
 
 ### macOS permissions
 
@@ -63,6 +64,16 @@ pnpm app            # builds, signs, copies your env files and opens dist/mac-ar
 ```
 
 Quit `pnpm dev` first (only one Klair runs at a time). The app starts outside the repo, so `pnpm app` copies `.env.local` / `.env` into `~/Library/Application Support/Klair` (`scripts/copy-env.sh`; rerun `pnpm app` after editing them). Click **Allow** on a permission row in the Start window to make macOS list Klair, then switch it on. For the fn key, **Check again** picks up the grant; Screen Recording needs Klair quit and reopened. `pnpm app` signs the build with a local self-signed certificate (`scripts/sign-dev.sh`, kept in its own `klair-dev` keychain), so the grant survives rebuilds. If System Settings shows Klair as allowed but the app says it isn't, the entry is stale: run `tccutil reset ScreenCapture com.klair.app`, then allow it again.
+
+## Chrome extension
+
+`extension/` is a Manifest V3 extension ("Klair for Chrome"). On each new page, including in-app navigation on single-page sites, it reads the page's rendered text, title and URL and posts it to Klair at `http://127.0.0.1:47821` (`src/main/bridge.ts`).
+
+- **What Klair does with a page:** stores it with the session (a `pages` row, a searchable note, and a markdown file Graphify indexes). Each new screenshot's note gets the latest page's text and says whether the screenshot shows it; if so, that screenshot's ideas and answers use the whole page ("Full page · …" in sources). Pages upload to TigerData with the rest of the session.
+- **When:** only while a session is observing (otherwise Klair answers 409 and drops the page), never in incognito, and not while the switch in the extension's popup is off. Switching back to a tab makes it the live page again without storing it twice.
+- **Who can send:** the bridge listens on 127.0.0.1 only and accepts requests only with `Origin: chrome-extension://jndibkpbjoldneahpgmofeoekkpeaepo`. That id is pinned by the `key` in `extension/manifest.json` (no private key is kept; it would only be needed to publish), so web pages can't push content into a session.
+- **Settings:** `KLAIR_BRIDGE_PORT` (default 47821; also change `KLAIR` in `extension/background.js` and `host_permissions` in the manifest) and `KLAIR_EXTENSION_ID` (if you load a differently keyed copy).
+- **Check it:** the Start window's **Chrome extension** row turns green within a minute of loading the extension; the extension's popup shows whether Klair is observing and what happened to the last page.
 
 ## Demo script (from the brief)
 
@@ -82,7 +93,8 @@ Quit `pnpm dev` first (only one Klair runs at a time). The app starts outside th
 - **Screenshots:** this Mac only, at `~/Library/Application Support/Klair/sessions/local-<id>/shots/`.
 - **The running session** (captures, notes, ideas, answers, activity): SQLite on this Mac, `~/Library/Application Support/Klair/klair.db`.
 - **Ended sessions:** uploaded in full to your TigerData database, in one transaction. The local copy stays until retention, and each local session records its TigerData id (for resuming a session later). The Sessions window shows whether a session has been uploaded.
-- **Sent to AI models (Google and OpenAI by default, via OpenRouter):** each new screen (for a short note), plus the relevant notes for ideas and answers. Graphify extraction also uses OpenRouter.
+- **Chrome pages (with the extension):** the full text of pages you open while a session is observing, stored like the rest of the session (on this Mac, then TigerData).
+- **Sent to AI models (Google and OpenAI by default, via OpenRouter):** each new screen (for a short note) with up to 15k characters of the latest Chrome page, plus the relevant notes for ideas and answers, and up to 60k characters of the page on screen for an answer. Graphify extraction also uses OpenRouter.
 - **Deleting a session** removes its local rows and TigerData copy (queued if TigerData is unreachable), screenshots, notes, Graphify index and cache entries. Sessions older than `KLAIR_RETENTION_DAYS` are removed automatically.
 
 ## Scripts

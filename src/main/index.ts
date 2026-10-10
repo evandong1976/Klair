@@ -2,7 +2,9 @@ import './env'
 import { app, BrowserWindow } from 'electron'
 import { electronApp, optimizer } from '@electron-toolkit/utils'
 import * as c from './controller'
-import { runHealth } from './health'
+import { Bridge } from './bridge'
+import { config } from './config'
+import { runHealth, setBridgeInfo } from './health'
 import { registerIpc } from './ipc'
 import { registerShortcuts, unregisterShortcuts } from './shortcuts'
 import { getState, onStateChange, setState } from './state'
@@ -56,6 +58,17 @@ app.whenReady().then(async () => {
       notice: { kind: 'fn-busy', detail: 'Neither fn nor the Klair shortcut could be registered' }
     })
   }
+
+  // Full pages from the Chrome extension (extension/), fed into the running session.
+  const bridge = new Bridge(
+    {
+      onPage: (page) => c.onBrowserPage(page),
+      status: () => ({ session: !!getState().session, observing: getState().observing === 'on' })
+    },
+    { port: config.bridgePort, extensionId: config.extensionId }
+  )
+  setBridgeInfo(() => bridge.info())
+  if (!(await bridge.listen())) console.warn('chrome bridge:', bridge.info().error)
 
   windows.openStart()
 

@@ -1,10 +1,15 @@
 import { config } from './config'
-import { pendingIndexCaptures, setIndexStatus } from './local'
+import {
+  pendingIndexCaptures,
+  pendingIndexPages,
+  setIndexStatus,
+  setPageIndexStatus
+} from './local'
 import { indexSession } from './graphify'
 import { notesDir, sessionDir } from './paths'
 
 // One Graphify extract per session at a time, debounced. Only committed captures
-// with a written note are indexed. Failures are marked and retried on the next run,
+// with a written note, and Chrome pages with a written page file, are indexed. Failures are marked and retried on the next run,
 // without duplicates (Graphify's extract is incremental). Deleting a session aborts
 // its running job and drops anything queued.
 
@@ -51,18 +56,21 @@ async function runIndex(sessionId: number): Promise<void> {
   j.timer = null
   if (j.cancelled) return
   let ids: number[] = []
+  let pageIds: number[] = []
   try {
     ids = await pendingIndexCaptures(sessionId)
+    pageIds = await pendingIndexPages(sessionId)
   } catch {
     return
   }
-  if (ids.length === 0) return
+  if (ids.length === 0 && pageIds.length === 0) return
   j.newNotes = 0
   j.running = new AbortController()
   try {
     const out = await indexSession(notesDir(sessionId), sessionDir(sessionId), j.running.signal)
     if (j.cancelled) return
     await setIndexStatus(ids, 'indexed')
+    await setPageIndexStatus(pageIds, 'indexed')
     lastResult = {
       at: new Date().toISOString(),
       ok: true,
@@ -71,6 +79,7 @@ async function runIndex(sessionId: number): Promise<void> {
   } catch (err) {
     if (j.cancelled) return
     await setIndexStatus(ids, 'failed').catch(() => undefined)
+    await setPageIndexStatus(pageIds, 'failed').catch(() => undefined)
     lastResult = {
       at: new Date().toISOString(),
       ok: false,

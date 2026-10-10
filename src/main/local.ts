@@ -139,9 +139,40 @@ create table if not exists screen_activity (
   dwell_ms integer not null default 0
 );
 create index if not exists screen_activity_session_idx on screen_activity (session_id, time);
+-- Full pages sent by the Chrome extension (extension/, bridge.ts): the whole rendered text,
+-- not just what a screenshot shows. One row per distinct version of a page.
+create table if not exists pages (
+  id integer primary key autoincrement,
+  session_id integer not null references sessions(id) on delete cascade,
+  captured_at text not null default (${NOW}),
+  url text not null,
+  title text,
+  description text,
+  body text not null,
+  text_hash text not null,
+  truncated integer not null default 0,
+  note_path text,
+  index_status text not null default 'pending'
+);
+create index if not exists pages_session_idx on pages (session_id, captured_at);
+create unique index if not exists pages_hash_idx on pages (session_id, text_hash);
 -- TigerData sessions deleted here while TigerData was unreachable; removed on the next upload run.
 create table if not exists pending_remote_deletes (remote_id integer primary key);
 `
+
+/** Columns added after a table first shipped (SQLite has no "add column if not exists"). */
+const ADDED_COLUMNS: [table: string, column: string, type: string][] = [
+  // The Chrome page a screenshot shows, when the note model matched them.
+  ['captures', 'page_id', 'integer references pages(id) on delete set null']
+]
+
+function addColumns(d: DatabaseSync): void {
+  for (const [table, column, type] of ADDED_COLUMNS) {
+    const cols = d.prepare(`pragma table_info(${table})`).all() as { name: string }[]
+    if (!cols.some((c) => c.name === column))
+      d.exec(`alter table ${table} add column ${column} ${type}`)
+  }
+}
 
 let sqlite: DatabaseSync | null = null
 let openError: string | null = null
@@ -160,6 +191,7 @@ function open(): DatabaseSync {
     const d = new DatabaseSync(file ?? join(app.getPath('userData'), 'klair.db'))
     d.exec('pragma journal_mode = wal; pragma foreign_keys = on; pragma busy_timeout = 3000;')
     d.exec(schema)
+    addColumns(d)
     sqlite = d
     openError = null
     return d
@@ -334,6 +366,7 @@ export interface SessionExport {
   actions: Row[]
   notes: Row[]
   activity: Row[]
+  pages: Row[]
 }
 
 /** Every row of one session, read in a single snapshot, for the TigerData upload. */
@@ -355,9 +388,95 @@ export function exportSession(id: number): SessionExport | null {
       notes: all(`select * from notes where session_id = ? order by id`, id),
       activity: all(`select * from screen_activity where session_id = ? order by time`, id).map(
         (r) => ({ ...r, changed: Number(r.changed) === 1 })
-      )
+      ),
+      pages: all(`select * from pages where session_id = ? order by id`, id).map((r) => ({
+        ...r,
+        truncated: Number(r.truncated) === 1
+      }))
     }
   })
+}
+
+// ---------------------------------------------------------------- pages (Chrome extension)
+
+export interface PageRow {
+  id: number
+  sessionId: number
+  capturedAt: string
+  url: string
+  title: string
+  body: string
+  truncated: boolean
+}
+
+function pageRow(r: Row): PageRow {
+  return {
+    id: Number(r.id),
+    sessionId: Number(r.session_id),
+    capturedAt: String(r.captured_at),
+    url: String(r.url),
+    title: (r.title as string) || String(r.url),
+    body: String(r.body),
+    truncated: Number(r.truncated) === 1
+  }
+}
+
+export async function insertPage(p: {
+  sessionId: number
+  url: string
+  title: string
+  description: string
+  body: string
+  textHash: string
+  truncated: boolean
+}): Promise<number> {
+  return run(
+    `insert into pages (session_id, url, title, description, body, text_hash, truncated) values (?, ?, ?, ?, ?, ?, ?)`,
+    p.sessionId,
+    p.url,
+    p.title,
+    p.description,
+    p.body,
+    p.textHash,
+    p.truncated ? 1 : 0
+  )
+}
+
+export async function findPageByHash(sessionId: number, textHash: string): Promise<PageRow | null> {
+  const r = one(`select * from pages where session_id = ? and text_hash = ?`, sessionId, textHash)
+  return r ? pageRow(r) : null
+}
+
+export async function getPage(id: number): Promise<PageRow | null> {
+  const r = one(`select * from pages where id = ?`, id)
+  return r ? pageRow(r) : null
+}
+
+export async function setPageNotePath(id: number, notePath: string): Promise<void> {
+  run(`update pages set note_path = ? where id = ?`, notePath, id)
+}
+
+export async function linkCaptureToPage(captureId: number, pageId: number): Promise<void> {
+  run(`update captures set page_id = ? where id = ?`, pageId, captureId)
+}
+
+export async function pendingIndexPages(sessionId: number): Promise<number[]> {
+  return all(
+    `select id from pages where session_id = ? and note_path is not null and index_status <> 'indexed'`,
+    sessionId
+  ).map((r) => Number(r.id))
+}
+
+export async function setPageIndexStatus(
+  ids: number[],
+  status: 'pending' | 'indexed' | 'failed'
+): Promise<void> {
+  if (ids.length === 0) return
+  run(
+    `update pages set index_status = ? where id in (select value from json_each(?))`,
+    status,
+    JSON.stringify(ids)
+  )
 }
 
 // ---------------------------------------------------------------- captures
@@ -429,9 +548,10 @@ export async function getCapture(id: number): Promise<{
   path: string
   note: string | null
   capturedAt: string
+  pageId: number | null
 } | null> {
   const r = one(
-    `select id, session_id, screenshot_path, note, captured_at from captures where id = ? and status = 'committed'`,
+    `select id, session_id, screenshot_path, note, captured_at, page_id from captures where id = ? and status = 'committed'`,
     id
   )
   return r
@@ -440,7 +560,8 @@ export async function getCapture(id: number): Promise<{
         sessionId: Number(r.session_id),
         path: String(r.screenshot_path),
         note: (r.note as string) ?? null,
-        capturedAt: String(r.captured_at)
+        capturedAt: String(r.captured_at),
+        pageId: r.page_id == null ? null : Number(r.page_id)
       }
     : null
 }
@@ -658,6 +779,10 @@ export async function timeline(sessionId: number): Promise<TimelineItem[]> {
     `select id, created_at, kind, prompt, status from actions where session_id = ? order by created_at limit 40`,
     sessionId
   )
+  const pages = all(
+    `select captured_at, title, url, length(body) as chars from pages where session_id = ? order by id limit 40`,
+    sessionId
+  )
   const items: TimelineItem[] = [
     ...seen.map((r, i) => {
       const n = Number(r.n)
@@ -668,6 +793,12 @@ export async function timeline(sessionId: number): Promise<TimelineItem[]> {
         detail: `${n} capture${n === 1 ? '' : 's'}${r.detail ? ` · ${r.detail}` : ''}`
       }
     }),
+    ...pages.map((r) => ({
+      at: String(r.captured_at),
+      kind: 'switched' as const,
+      title: `Opened "${r.title || r.url}" in Chrome`,
+      detail: `Full page · ${Math.round(Number(r.chars) / 1000)}k characters · ${r.url}`
+    })),
     ...asked.map((r) => ({
       at: String(r.created_at),
       kind: 'asked' as const,

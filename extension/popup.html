@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Klair</title>
+    <style>
+      :root {
+        --ink: #2d3128;
+        --ink-2: #3f4538;
+        --muted: #686d60;
+        --sage: #9caa77;
+        --rose: #ee8378;
+        --rose-text: #a8463d;
+        --ground: #fbf7f5;
+        --line: #f0e4e1;
+        --amber: #e9c46a;
+      }
+      body {
+        margin: 0;
+        width: 300px;
+        background: var(--ground);
+        color: var(--ink);
+        font:
+          13.5px/1.45 -apple-system,
+          'Helvetica Neue',
+          sans-serif;
+      }
+      main {
+        padding: 16px 18px;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+      h1 {
+        margin: 0;
+        font-size: 16px;
+        font-weight: 800;
+      }
+      .card {
+        background: #fff;
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        padding: 10px 12px;
+        display: flex;
+        gap: 10px;
+        align-items: flex-start;
+      }
+      .dot {
+        flex: none;
+        width: 10px;
+        height: 10px;
+        margin-top: 4px;
+        background: var(--line);
+      }
+      .dot.ok {
+        background: var(--sage);
+      }
+      .dot.warn {
+        background: var(--amber);
+      }
+      .dot.fail {
+        background: var(--rose);
+      }
+      .title {
+        font-weight: 700;
+      }
+      .detail {
+        color: var(--muted);
+        font-size: 12.5px;
+        word-break: break-word;
+      }
+      label {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        font-weight: 700;
+        cursor: pointer;
+      }
+      input[type='checkbox'] {
+        width: 16px;
+        height: 16px;
+        accent-color: var(--rose);
+      }
+      p.small {
+        margin: 0;
+        color: var(--ink-2);
+        font-size: 12px;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Klair</h1>
+      <div class="card">
+        <span id="klair-dot" class="dot"></span>
+        <span>
+          <div id="klair-title" class="title">Checking…</div>
+          <div id="klair-detail" class="detail"></div>
+        </span>
+      </div>
+      <div class="card">
+        <span id="last-dot" class="dot"></span>
+        <span>
+          <div id="last-title" class="title">No page sent yet</div>
+          <div id="last-detail" class="detail"></div>
+        </span>
+      </div>
+      <label>
+        Send pages to Klair
+        <input id="enabled" type="checkbox" />
+      </label>
+      <p class="small">
+        While a Klair session is running, the full text of each page you open goes to the Klair app
+        on this Mac and becomes part of the session. Never in incognito windows.
+      </p>
+    </main>
+    <script src="popup.js"></script>
+  </body>
+</html>

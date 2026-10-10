@@ -55,7 +55,9 @@ export function StartWindow(): React.JSX.Element {
     return () => window.removeEventListener('keydown', onKey)
   })
 
-  const conn = ['tigerdata', 'openrouter', 'graphify'].map((id) => check(id)).filter(Boolean)
+  const conn = ['tigerdata', 'openrouter', 'graphify', 'browser']
+    .map((id) => check(id))
+    .filter(Boolean)
 
   return (
     <div className="bg-ground/55 min-h-screen box-border pt-10 px-9 pb-7 flex flex-col gap-5">
@@ -156,7 +158,8 @@ export function StartWindow(): React.JSX.Element {
 
       <p className="m-0 text-[12.5px] leading-[1.5] text-ink-3 text-pretty">
         Klair sends each new screen to an AI model (via OpenRouter) to take notes, and the relevant
-        notes when it makes ideas and answers. Pause anytime with fn P or ⌃⌥P.
+        notes when it makes ideas and answers. With the Chrome extension, the full text of the page
+        you&apos;re on goes with them. Pause anytime with fn P or ⌃⌥P.
       </p>
 
       <div className="mt-auto flex justify-end gap-2.5">

@@ -4,6 +4,7 @@ import { readdir, readFile, rm, unlink, writeFile } from 'fs/promises'
 import { join } from 'path'
 import type { AnswerOutput } from '../shared/blocks'
 import type {
+  Provenance,
   AnswerState,
   InsightRow,
   StuckSpot,
@@ -13,6 +14,7 @@ import type {
   SessionDetail,
   SuggestionSet
 } from '../shared/types'
+import { createHash } from 'crypto'
 import { cache } from './cache'
 import { CaptureLoop, type Frame } from './capture'
 import { config } from './config'
@@ -22,7 +24,7 @@ import * as store from './local'
 import { answerToText, runAssistance } from './execute'
 import { lastHealth, runHealth } from './health'
 import { cancelIndex, scheduleIndex } from './indexer'
-import { makeVisionNote, writeNoteFile, type VisionNote } from './notes'
+import { makeVisionNote, writeNoteFile, type PageContext, type VisionNote } from './notes'
 import { notesDir, SESSION_DIR_PREFIX, sessionDir, sessionsRoot, shotsDir } from './paths'
 import { retrieve } from './retrieve'
 import { getState, setState } from './state'
@@ -45,6 +47,8 @@ interface CaptureMem {
   path: string
   capturedAt: string
   note: VisionNote | null
+  /** The Chrome page this screenshot shows, when the note model matched them. */
+  pageId: number | null
 }
 
 let sessionId: number | null = null
@@ -66,6 +70,11 @@ let lastRun: Parameters<typeof execute>[0] | null = null
 let lastOutput: AnswerOutput | null = null
 let lastAnswerCaptureId: number | null = null
 let staleTimer: NodeJS.Timeout | null = null
+
+// The page most recently opened in Chrome (Chrome extension → bridge.ts). Offered to the
+// note model with each new screenshot, which says whether the screenshot shows it.
+const LIVE_PAGE_MS = 30 * 60_000
+let livePage: (PageContext & { id: number; at: number }) | null = null
 
 // ------------------------------------------------------------------ helpers
 
@@ -157,6 +166,7 @@ export async function startSession(name: string): Promise<void> {
     sessionId = s.id
     captures.clear()
     notePromises.clear()
+    livePage = null
     setState({
       session: {
         id: s.id,
@@ -223,6 +233,7 @@ export async function endSession(): Promise<void> {
   core.setObserving(false)
   cancelExecution()
   sessionId = null
+  livePage = null
   setState({
     session: null,
     observing: 'off',
@@ -398,7 +409,13 @@ async function onFrame(frame: Frame): Promise<void> {
     return
   }
   row.captureId = id
-  const mem: CaptureMem = { id, path, capturedAt: frame.at.toISOString(), note: null }
+  const mem: CaptureMem = {
+    id,
+    path,
+    capturedAt: frame.at.toISOString(),
+    note: null,
+    pageId: null
+  }
   captures.set(id, mem)
   if (captures.size > 40) captures.delete(captures.keys().next().value as number)
   notePromises.set(id, noteFor(sid, mem, frame))
@@ -407,9 +424,14 @@ async function onFrame(frame: Frame): Promise<void> {
 
 async function noteFor(sid: number, mem: CaptureMem, frame: Frame): Promise<VisionNote | null> {
   try {
-    const note = await makeVisionNote(frame.png, frame.hash, frame.meta, sid)
+    const page = livePage && Date.now() - livePage.at < LIVE_PAGE_MS ? livePage : null
+    const note = await makeVisionNote(frame.png, frame.hash, frame.meta, sid, page)
     mem.note = note
     currentTopic = note.topic
+    if (page && note.chromePageOnScreen) {
+      mem.pageId = page.id
+      await store.linkCaptureToPage(mem.id, page.id)
+    }
     const file = await writeNoteFile(
       notesDir(sid),
       `capture-${mem.id}`,
@@ -420,6 +442,7 @@ async function noteFor(sid: number, mem: CaptureMem, frame: Frame): Promise<Visi
         window_title: frame.meta.windowTitle,
         url: frame.meta.url,
         topic: note.topic,
+        page_id: mem.pageId,
         provenance: 'observed'
       },
       note.note
@@ -440,6 +463,83 @@ async function noteFor(sid: number, mem: CaptureMem, frame: Frame): Promise<Visi
   }
 }
 
+// ------------------------------------------------------------------ Chrome pages
+
+/**
+ * A page sent by the Chrome extension: its whole rendered text, not just what a
+ * screenshot shows. Stored with the session (row, searchable note, Graphify file) and
+ * offered to the note model with the next screenshots.
+ */
+export async function onBrowserPage(p: {
+  url: string
+  title: string
+  description: string
+  text: string
+  truncated: boolean
+}): Promise<{ stored: boolean; reason?: 'no-session' | 'paused' | 'duplicate' }> {
+  const sid = sessionId
+  if (!sid) return { stored: false, reason: 'no-session' }
+  const s = getState()
+  if (s.observing !== 'on' || !s.saving) return { stored: false, reason: 'paused' }
+  const title = p.title.trim() || p.url
+  const textHash = createHash('sha1').update(`${p.url}\n${p.text}`).digest('hex')
+  const seen = await store.findPageByHash(sid, textHash)
+  if (seen) {
+    // Back on a page already stored: it is the live page again, nothing new to save.
+    livePage = { id: seen.id, title, url: p.url, body: seen.body, at: Date.now() }
+    return { stored: false, reason: 'duplicate' }
+  }
+  try {
+    const id = await store.insertPage({
+      sessionId: sid,
+      url: p.url,
+      title,
+      description: p.description,
+      body: p.text,
+      textHash,
+      truncated: p.truncated
+    })
+    const capturedAt = new Date().toISOString()
+    const file = await writeNoteFile(
+      notesDir(sid),
+      `page-${id}`,
+      {
+        page_id: id,
+        captured_at: capturedAt,
+        url: p.url,
+        title,
+        source: 'chrome',
+        provenance: 'observed'
+      },
+      `# ${title}\n\n${p.url}\n\n${p.text}`
+    )
+    await store.setPageNotePath(id, file)
+    await store.insertNote({
+      sessionId: sid,
+      provenance: 'observed',
+      topic: title.slice(0, 80),
+      body: `Page "${title}" (${p.url}), full text from Chrome:\n\n${p.text}`
+    })
+    livePage = { id, title, url: p.url, body: p.text, at: Date.now() }
+    scheduleIndex(sid)
+    void refreshStats()
+    return { stored: true }
+  } catch (err) {
+    persistenceFailed(err)
+    return { stored: false, reason: 'paused' }
+  }
+}
+
+const PAGE_SOURCE = 'Full page'
+
+function pageSource(title: string, captureId: number | null): Provenance {
+  return {
+    kind: 'screen',
+    label: `${PAGE_SOURCE} · ${title.slice(0, 40)}`,
+    captureId: captureId ?? undefined
+  }
+}
+
 // ------------------------------------------------------------------ suggestions
 
 async function doSuggest(generationId: number, captureId: number): Promise<void> {
@@ -449,7 +549,14 @@ async function doSuggest(generationId: number, captureId: number): Promise<void>
     const note = await (notePromises.get(captureId) ?? Promise.resolve(null))
     const mem = captures.get(captureId)
     if (!note || !mem) throw new Error('No note for this screen yet')
-    const set = suggestionsFromNote({ captureId, generationId, note, capturedAt: mem.capturedAt })
+    const page = mem.pageId ? await store.getPage(mem.pageId) : null
+    const set = suggestionsFromNote({
+      captureId,
+      generationId,
+      note,
+      capturedAt: mem.capturedAt,
+      pageTitle: page?.title ?? null
+    })
     apply(core.onSuggestions(generationId, set))
   } catch (err) {
     console.warn('suggestions failed:', (err as Error).message)
@@ -529,20 +636,32 @@ export function dismissNotice(): void {
 
 // ------------------------------------------------------------------ execution
 
-async function captureImage(
-  captureId: number | null
-): Promise<{ png: Buffer | null; note: string; topic: string }> {
-  if (captureId === null) return { png: null, note: '', topic: currentTopic ?? '' }
+async function captureImage(captureId: number | null): Promise<{
+  png: Buffer | null
+  note: string
+  topic: string
+  page: PageContext | null
+}> {
+  if (captureId === null) return { png: null, note: '', topic: currentTopic ?? '', page: null }
   const note = await (notePromises.get(captureId) ?? Promise.resolve(null))
-  let path = captures.get(captureId)?.path
+  const mem = captures.get(captureId)
+  let path = mem?.path
+  let pageId = mem?.pageId ?? null
   let noteText = note?.note ?? ''
-  if (!path) {
+  if (!mem) {
     const row = await store.getCapture(captureId).catch(() => null)
     path = row?.path
+    pageId = row?.pageId ?? null
     noteText ||= row?.note ?? ''
   }
   const png = path && existsSync(path) ? await readFile(path) : null
-  return { png, note: noteText, topic: note?.topic ?? currentTopic ?? '' }
+  const page = pageId ? await store.getPage(pageId).catch(() => null) : null
+  return {
+    png,
+    note: noteText,
+    topic: note?.topic ?? currentTopic ?? '',
+    page: page ? { title: page.title, url: page.url, body: page.body } : null
+  }
 }
 
 async function execute(run: {
@@ -614,10 +733,11 @@ async function execute(run: {
           chars: 0
         }
     if (!live()) return
-    const sources = [
-      ...(run.set?.sources.filter((s) => s.kind === 'screen') ?? []),
-      ...retrieved.sources
-    ].slice(0, 3)
+    const screenSources = run.set?.sources.filter((s) => s.kind === 'screen') ?? []
+    if (img.page && !screenSources.some((s) => s.label.startsWith(PAGE_SOURCE))) {
+      screenSources.push(pageSource(img.page.title, run.captureId))
+    }
+    const sources = [...screenSources, ...retrieved.sources].slice(0, 3)
     setState({
       answer: {
         ...base,
@@ -638,6 +758,7 @@ async function execute(run: {
       png: img.note ? null : img.png,
       note: img.note,
       topic: img.topic,
+      page: img.page,
       retrieved,
       previous: run.previous ?? null,
       signal: abort.signal,

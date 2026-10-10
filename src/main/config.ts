@@ -1,3 +1,5 @@
+import { DEFAULT_BRIDGE_PORT, KLAIR_EXTENSION_ID } from './bridge'
+
 // All configuration in one place. KLAIR_* wins; CLAIRE_* is read as a legacy fallback.
 const env = process.env
 
@@ -33,6 +35,10 @@ export const config = {
   retrievalBudget: num('RETRIEVAL_BUDGET', 1500),
 
   activeWindow: pick('ACTIVE_WINDOW') === 'applescript',
+  /** Local port the Chrome extension sends pages to (extension/background.js uses the same). */
+  bridgePort: num('BRIDGE_PORT', DEFAULT_BRIDGE_PORT),
+  /** Only this extension may send pages; the default is pinned by extension/manifest.json. */
+  extensionId: pick('EXTENSION_ID') ?? KLAIR_EXTENSION_ID,
   /** Accelerators used until the native fn addon is available (or when fn is busy). */
   fallbackKeys: {
     toggle: pick('TOGGLE_KEY') ?? 'Control+Alt+K',

@@ -7,6 +7,7 @@ import { config } from './config'
 import { capabilities, getPool, migrate, ping, timescaleVersion } from './db'
 import { retryFnKey } from './fnkey'
 import { graphifyAvailable } from './graphify'
+import type { BridgeInfo } from './bridge'
 import { localStatus } from './local'
 import { recordMetric } from './metrics'
 
@@ -146,6 +147,34 @@ function checkFn(): HealthCheck {
   }
 }
 
+let bridgeInfo: () => BridgeInfo | null = () => null
+
+/** index.ts hands over the Chrome bridge once it's listening. */
+export function setBridgeInfo(fn: () => BridgeInfo): void {
+  bridgeInfo = fn
+}
+
+function checkBrowser(): HealthCheck {
+  const base = { id: 'browser' as const, label: 'Chrome extension' }
+  const b = bridgeInfo()
+  if (!b || !b.listening) {
+    return { ...base, status: 'warn', detail: `Not listening: ${b?.error ?? 'starting'}` }
+  }
+  // The extension checks in every minute.
+  if (b.lastSeenAt && Date.now() - b.lastSeenAt < 3 * 60_000) {
+    const last = b.lastPageAt
+      ? ` · last page ${new Date(b.lastPageAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`
+      : ''
+    return { ...base, status: 'ok', detail: `Connected: full pages go into the session${last}` }
+  }
+  return {
+    ...base,
+    status: 'warn',
+    detail:
+      'Not connected. Optional: chrome://extensions › Developer mode › Load unpacked › the extension folder'
+  }
+}
+
 let inflight: Promise<HealthReport> | null = null
 
 /** Run every check. Concurrent callers share one run (avoids racing migrations). */
@@ -176,6 +205,7 @@ async function doRunHealth(opts: { skipModel?: boolean }): Promise<HealthReport>
     },
     tiger,
     openrouter,
+    checkBrowser(),
     {
       id: 'graphify',
       label: 'Graphify',

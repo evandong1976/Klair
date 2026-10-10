@@ -81,3 +81,30 @@ test('deleting a session removes its rows and search entries', async () => {
   const hits = await local.searchNotes('epsilon', { sessionId: id })
   assert.equal(hits.length, 0)
 })
+
+test('Chrome pages are stored once, linked to captures and exported', async () => {
+  const id = await sessionWithNotes('zeta')
+  const page = {
+    sessionId: id,
+    url: 'https://en.wikipedia.org/wiki/Learning_rate',
+    title: 'Learning rate',
+    description: '',
+    body: 'In machine learning, the learning rate is a tuning parameter…',
+    textHash: 'h-zeta',
+    truncated: false
+  }
+  const pid = await local.insertPage(page)
+  await assert.rejects(local.insertPage(page)) // same version twice: unique per session
+  assert.equal((await local.findPageByHash(id, 'h-zeta'))?.id, pid)
+  const cap = await local.insertPendingCapture(id, '/tmp/zeta-2.png', { imageHash: 'z2' })
+  await local.setCaptureStatus(cap, 'committed')
+  await local.linkCaptureToPage(cap, pid)
+  assert.equal((await local.getCapture(cap))?.pageId, pid)
+  assert.deepEqual(await local.pendingIndexPages(id), [])
+  await local.setPageNotePath(pid, '/tmp/page.md')
+  assert.deepEqual(await local.pendingIndexPages(id), [pid])
+  const data = local.exportSession(id)
+  assert.equal(data?.pages.length, 1)
+  assert.equal(data?.captures.find((c) => c.id === cap)?.page_id, pid)
+  assert.ok((await local.timeline(id)).some((t) => t.title.includes('Learning rate')))
+})

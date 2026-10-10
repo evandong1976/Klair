@@ -28,5 +28,24 @@ export default defineConfig(
       ...eslintPluginReactRefresh.configs.vite.rules
     }
   },
+  {
+    // The Chrome extension: plain browser scripts with the chrome.* extension APIs.
+    files: ['extension/**/*.js'],
+    languageOptions: {
+      sourceType: 'script',
+      globals: Object.fromEntries(
+        [
+          'chrome',
+          'document',
+          'location',
+          'fetch',
+          'setTimeout',
+          'clearTimeout',
+          'setInterval'
+        ].map((g) => [g, 'readonly'])
+      )
+    },
+    rules: { '@typescript-eslint/explicit-function-return-type': 'off' }
+  },
   eslintConfigPrettier
 )
