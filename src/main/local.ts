@@ -91,6 +91,14 @@ create table if not exists project_spans (
 );
 create index if not exists project_spans_session_idx on project_spans (session_id, started_at);
 create index if not exists project_spans_project_idx on project_spans (project_id, started_at);
+-- The projects pulled into a session, in order: position 1–9 is fn N / ⌃⌥N in it.
+create table if not exists session_projects (
+  session_id integer not null references sessions(id) on delete cascade,
+  project_id integer not null references projects(id) on delete cascade,
+  position integer not null,
+  added_at text not null default (${NOW}),
+  primary key (session_id, project_id)
+);
 create table if not exists captures (
   id integer primary key autoincrement,
   project_id integer not null references projects(id) on delete cascade,
@@ -348,6 +356,17 @@ function backfillSlots(d: DatabaseSync): void {
   }
 }
 
+/** Sessions from before session_projects: their projects are the ones they have spans for. */
+function backfillSessionProjects(d: DatabaseSync): void {
+  d.exec(`insert or ignore into session_projects (session_id, project_id, position, added_at)
+    select s.session_id, s.project_id,
+           row_number() over (partition by s.session_id order by min(s.started_at)),
+           min(s.started_at)
+    from project_spans s
+    where not exists (select 1 from session_projects x where x.session_id = s.session_id)
+    group by s.session_id, s.project_id`)
+}
+
 let sqlite: DatabaseSync | null = null
 let openError: string | null = null
 let file: string | null = null
@@ -369,6 +388,7 @@ function open(): DatabaseSync {
     d.exec(schema)
     addColumns(d)
     backfillSlots(d)
+    backfillSessionProjects(d)
     sqlite = d
     openError = null
     return d
@@ -525,8 +545,12 @@ export async function setSessionStatus(
   if (status === 'ended') await closeSpan(id)
 }
 
-/** Start working in a project within a session (closes the span that was open). */
+/**
+ * Start working in a project within a session (closes the span that was open). A
+ * project worked in is always one of the session's projects.
+ */
 export async function openSpan(sessionId: number, projectId: number): Promise<void> {
+  await addSessionProject(sessionId, projectId)
   transaction(() => {
     run(
       `update project_spans set ended_at = ${NOW} where session_id = ? and ended_at is null`,
@@ -553,18 +577,63 @@ export async function closeSpan(sessionId: number): Promise<void> {
   for (const r of open) await touchProject(Number(r.project_id))
 }
 
-/** Projects worked in during a session, longest first. */
+/**
+ * A session's projects in the order they were pulled in (position = fn N), each with
+ * the time it was active. Projects with nothing captured yet are included.
+ */
 export async function sessionProjects(
   sessionId: number
-): Promise<{ id: number; name: string; ms: number }[]> {
+): Promise<{ id: number; name: string; ms: number; position: number }[]> {
   return all(
-    `select p.id, p.name,
-            sum((julianday(coalesce(s.ended_at, strftime('%Y-%m-%dT%H:%M:%fZ', 'now')))
-                 - julianday(s.started_at)) * 86400000) as ms
-     from project_spans s join projects p on p.id = s.project_id
-     where s.session_id = ? group by p.id order by ms desc`,
+    `select p.id, p.name, m.position,
+            coalesce((select sum((julianday(coalesce(s.ended_at, strftime('%Y-%m-%dT%H:%M:%fZ', 'now')))
+                                  - julianday(s.started_at)) * 86400000)
+                      from project_spans s where s.session_id = m.session_id and s.project_id = p.id), 0) as ms
+     from session_projects m join projects p on p.id = m.project_id
+     where m.session_id = ? order by m.position`,
     sessionId
-  ).map((r) => ({ id: Number(r.id), name: String(r.name), ms: Math.round(Number(r.ms ?? 0)) }))
+  ).map((r) => ({
+    id: Number(r.id),
+    name: String(r.name),
+    ms: Math.round(Number(r.ms ?? 0)),
+    position: Number(r.position)
+  }))
+}
+
+/** Pull a project into a session (no-op if it's already in). Returns its position. */
+export async function addSessionProject(sessionId: number, projectId: number): Promise<number> {
+  const had = one(
+    `select position from session_projects where session_id = ? and project_id = ?`,
+    sessionId,
+    projectId
+  )
+  if (had) return Number(had.position)
+  const next = Number(
+    one(
+      `select coalesce(max(position), 0) + 1 as n from session_projects where session_id = ?`,
+      sessionId
+    )?.n ?? 1
+  )
+  run(
+    `insert into session_projects (session_id, project_id, position, added_at) values (?, ?, ?, ${NOW})`,
+    sessionId,
+    projectId,
+    next
+  )
+  return next
+}
+
+/** The project at position N (fn N) in a session. */
+export async function sessionProjectAt(
+  sessionId: number,
+  position: number
+): Promise<ProjectItem | null> {
+  const r = one(
+    `select project_id from session_projects where session_id = ? and position = ?`,
+    sessionId,
+    position
+  )
+  return r ? getProject(Number(r.project_id)) : null
 }
 
 async function sessionItem(r: Row): Promise<SessionListItem> {
@@ -587,9 +656,16 @@ export async function getSession(id: number): Promise<SessionListItem | null> {
   return r ? sessionItem(r) : null
 }
 
-/** Removes the time record only; the projects keep their context. */
+/**
+ * Removes the session only (its time, spans and project list); every project keeps
+ * all the context it was given in it.
+ */
 export async function deleteSession(id: number): Promise<void> {
-  run(`delete from sessions where id = ?`, id)
+  transaction(() => {
+    run(`delete from session_projects where session_id = ?`, id)
+    run(`delete from project_spans where session_id = ?`, id)
+    run(`delete from sessions where id = ?`, id)
+  })
 }
 
 export async function expiredSessionIds(days: number): Promise<number[]> {

@@ -4,6 +4,7 @@ import { copyFile, readdir, readFile, rm, stat, unlink, writeFile } from 'fs/pro
 import { join } from 'path'
 import type { AnswerOutput } from '../shared/blocks'
 import type {
+  ProjectItem,
   DownloadOffer,
   SelectionRect,
   Provenance,
@@ -216,54 +217,78 @@ async function enterProject(p: { id: number; name: string; slot: number | null }
   })
 }
 
+/** Publish the session's projects (fn 1–9 order) and the active one's position. */
+async function syncSessionProjects(): Promise<void> {
+  const list = sessionId ? await store.sessionProjects(sessionId).catch(() => []) : []
+  const sessionProjects = list.map((p) => ({ id: p.id, name: p.name, slot: p.position }))
+  setState({
+    sessionProjects,
+    project: sessionProjects.find((p) => p.id === projectId) ?? null
+  })
+}
+
+/** Make `p` (already in the running session) the active project. */
+async function activate(p: { id: number; name: string }): Promise<void> {
+  if (!sessionId) return
+  windows.closeStart()
+  if (p.id !== projectId) {
+    await enterProject({ id: p.id, name: p.name, slot: null })
+    await store.openSpan(sessionId, p.id)
+    flash({ kind: 'switched', detail: p.name })
+  }
+  await syncSessionProjects()
+  if (getState().observing === 'paused') await resume()
+}
+
 /**
- * Work in project `p`: starts a session if none is running, otherwise switches the
- * active project within it (the session keeps running).
+ * Start a session with these projects pulled in (in this order: fn 1, fn 2, …). The
+ * first is active. If a session is already running, they are added to it instead.
  */
-async function workIn(p: { id: number; name: string; slot: number | null }): Promise<boolean> {
+export async function startSession(projectIds: number[]): Promise<void> {
+  const ids = [...new Set(projectIds.filter((n) => Number.isInteger(n) && n > 0))]
+  if (!ids.length) return
+  if (sessionId) {
+    for (const id of ids) await store.addSessionProject(sessionId, id)
+    const first = await store.getProject(ids[0])
+    if (first) await activate(first)
+    return
+  }
   const blocked = await cannotObserve()
   if (blocked) {
     setState({ notice: blocked, ...(blocked.kind === 'not-saving' ? { saving: false } : {}) })
-    return false
+    return
   }
   try {
-    if (!sessionId) {
-      const s = await store.startSession()
-      sessionId = s.id
-      setState({
-        session: { id: s.id, startedAt: s.startedAt, status: 'active' },
-        observing: 'on',
-        saving: true
-      })
-      await enterProject(p)
-      await store.openSpan(s.id, p.id)
-      windows.closeStart()
-      beginObserving()
-      return true
-    }
+    const first = await store.getProject(ids[0])
+    if (!first) return
+    const s = await store.startSession()
+    sessionId = s.id
+    for (const id of ids) await store.addSessionProject(s.id, id)
+    setState({
+      session: { id: s.id, startedAt: s.startedAt, status: 'active' },
+      observing: 'on',
+      saving: true
+    })
+    await enterProject({ id: first.id, name: first.name, slot: null })
+    await store.openSpan(s.id, first.id)
+    await syncSessionProjects()
     windows.closeStart()
-    if (p.id !== projectId) {
-      await enterProject(p)
-      await store.openSpan(sessionId, p.id)
-      flash({ kind: 'switched', detail: p.name })
-    }
-    if (getState().observing === 'paused') await resume()
-    return true
+    beginObserving()
   } catch (err) {
     persistenceFailed(err)
-    return false
   }
 }
 
-/** A new project with this name, worked in from now on. */
-export async function startSession(name: string): Promise<void> {
-  try {
-    const p = await store.createProject(name.trim() || 'Project')
-    // Couldn't start working in it: don't leave an empty project behind for each try.
-    if (!(await workIn(p)) && projectId !== p.id) await store.deleteProjectRows(p.id)
-  } catch (err) {
-    persistenceFailed(err)
-  }
+/** A new, empty project (pulled into a session separately). */
+export async function createProject(name: string): Promise<ProjectItem> {
+  return store.createProject(name.trim() || 'Project')
+}
+
+/** Pull a saved project into the running session, without switching to it. */
+export async function addToSession(id: number): Promise<void> {
+  if (!sessionId || !(await store.projectExists(id))) return
+  await store.addSessionProject(sessionId, id)
+  await syncSessionProjects()
 }
 
 /** The project everything goes into right now (null when no session runs). */
@@ -271,16 +296,21 @@ export function activeProjectId(): number | null {
   return projectId
 }
 
+/** Work in project `id`: pulled into the running session if needed, or a new session. */
 export async function switchProject(id: number): Promise<void> {
   const p = await store.getProject(id).catch(() => null)
-  if (p) await workIn(p)
+  if (!p) return
+  if (!sessionId) return startSession([id])
+  await store.addSessionProject(sessionId, id)
+  await activate(p)
 }
 
-/** fn 1–9 / ⌃⌥1–9: work in the project in that slot, from anywhere. */
+/** fn N / ⌃⌥N: the Nth project pulled into the running session. */
 export async function switchToSlot(slot: number): Promise<void> {
-  const p = await store.projectBySlot(slot).catch(() => null)
-  if (!p) return flash({ kind: 'switched', detail: `No project on ${slot}` })
-  await workIn(p)
+  if (!sessionId) return flash({ kind: 'switched', detail: 'No session running' })
+  const p = await store.sessionProjectAt(sessionId, slot).catch(() => null)
+  if (!p) return flash({ kind: 'switched', detail: `No project ${slot} in this session` })
+  await activate(p)
 }
 
 function beginObserving(): void {
@@ -338,6 +368,7 @@ export async function endSession(): Promise<void> {
   setState({
     session: null,
     project: null,
+    sessionProjects: [],
     observing: 'off',
     suggestions: null,
     nudge: false,
@@ -1381,7 +1412,7 @@ export async function sessionDetail(id: number): Promise<SessionDetail | null> {
   const lastSeen = [...timeline].reverse().find((t) => t.kind !== 'asked')
   return {
     session,
-    mainProjectId: session.projects[0]?.id ?? null,
+    mainProjectId: [...session.projects].sort((a, b) => b.ms - a.ms)[0]?.id ?? null,
     timeline,
     holding: {
       onScreen: live ? (lastMeta.windowTitle ?? currentTopic ?? '—') : (lastSeen?.title ?? '—'),

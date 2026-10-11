@@ -13,7 +13,7 @@ Beyond the screen itself, you can hand Klair more context: **select an area** of
 
 ## What it does
 
-- **Projects hold the context; sessions are time.** Everything Klair gathers (screens, notes, ideas, answers, Chrome pages, selections, added files, activity) goes into the **active project**. A **session** is only the time you spend working and holds no data; one session can cover several projects. Pick the project in the Start window, or switch anytime with **fn 1–9** / **⌃⌥1–9** (each project sits in a slot): the session keeps running. Context never crosses projects: ideas and answers only draw on the project you're in. See [Projects and sessions](#projects-and-sessions).
+- **Projects hold the context; sessions are time.** A **project** is a topic ("SWE", "ML", "OS") that keeps everything Klair gathers for it, across sessions. A **session** is the time you use Klair, with the projects you pull into it. Everything you give Klair (screens, notes, ideas, answers, Chrome pages, selections, added files, activity) goes into the session's **active project**; switch it with **fn 1–9** / **⌃⌥1–9** (the session's 1st, 2nd, … project) and the session keeps running. Context never crosses projects: ideas and answers only draw on the project you're in. See [Projects and sessions](#projects-and-sessions).
 - **Observes your screen.** Klair checks the screen every 4 s. A screenshot is stored only when it changed substantially since the last stored one (at least 5% of the screen), and a small model (the _change judge_) then confirms it's really new content, so a chat that keeps printing, an animation or a slight scroll doesn't count. Each new screen gets a short note from a vision model, written as observed facts. A second check leaves clearly unrelated screens (a glance at messages while in the "ML" project) out of the project's context.
 - **Offers ideas.** The same note proposes three ideas about the screen (the first is always a summary), plus up to three that build on what the project has covered so far. They appear beside the flower after you've stayed on a screen for the pause time (1 min by default). While the panel is open, a screen change is held so the ideas don't shift under you; it's applied when the panel closes (or when you ask for fresh ideas).
 - **Answers in place.** Pick an idea (**⌘1–9**), type your own question (**⌘K**), then refine the answer with the reshape chips (**⌘⇧1–3**: Shorter, Simpler, More detail). Answers are short markdown, grounded in the screen note plus related notes from the same project, found through the project's Graphify graph and keyword search, so only a small, relevant part of the project is sent.
@@ -109,22 +109,26 @@ Only the fn family is global; ⌘ keys work only while the panel is open. The fu
 | ---------------- | ------------------------------------------- | ------------------------------------------------------------------------------------------ |
 | Anywhere         | `fn` / `⌃⌥K` (changeable in the popover)    | Open or close Klair                                                                        |
 | Anywhere         | `fn P` / `⌃⌥P` · `fn Q` / `⌃⌥Q`             | Pause or resume · quiet ideas for 30 min                                                   |
-| Anywhere         | `fn 1–9` / `⌃⌥1–9`                          | Work in the project in that slot (the session keeps running)                               |
+| Anywhere         | `fn 1–9` / `⌃⌥1–9`                          | Make the session's 1st…9th project active (the session keeps running)                      |
 | Panel            | `⌘1–9` · `⌘↑↓` · `⌘K` · `⌘S` · `⌘/` · `esc` | Pick · move · ask · select an area · all keys · close                                      |
 | Answer           | `⌘[` · `⌘⇧1–3` · `⌘R`                       | Back to ideas · reshape · retry                                                            |
 | Menu bar popover | `⌘P` `⌘E` `⌘1–3` `⌘L` `⌘O` `⌘G` `⌘,`        | Pause · end session · pause time · last answer · all sessions · knowledge graph · settings |
 | Sessions window  | `⌘N` `⌘1–3` `⌘G` `⌘P` `⌘⌫`                  | New · pick session · knowledge graph · pause · delete session (time record only)           |
-| Start window     | `1–9` · `⌘N` · `⌘↵` · `esc`                 | Work in that project · new project · start · not now                                       |
+| Start window     | `⌘N` · `⌘↵` · `1–9` · `esc`                 | New project · start the session · (running) switch project · close                         |
 | Knowledge graph  | `⌘1–9` · `⌘R` · `esc`                       | Show that project's graph · rebuild it · close                                             |
 
 ## Projects and sessions
 
-- **A project** ("ML", "SW", "Thesis reading") is what Klair keeps. It holds every screen, note, idea, answer, Chrome page, selected area and added file gathered while it was active, plus its own Graphify graph. Projects stay until you delete them (**Delete project** in the Knowledge graph pane); context older than `KLAIR_RETENTION_DAYS` is pruned from them.
-- **A session** is only time: it starts when you start working and ends when you end it (menu bar › End). It records which project was active when (project spans), so one session can cover several projects. Deleting a session removes that time record only.
-- **The active project** gets everything captured. Choose it in the Start window (it starts a session if none is running), switch with **fn 1–9** / **⌃⌥1–9** or the panel's project chip; the session keeps running and nothing carries over between projects.
-- **When a session ends,** every project worked in gets its graph rebuilt and is uploaded to TigerData (replacing its earlier copy).
+- **A project** ("SWE", "ML", "OS") is a topic you work on. It holds every screen, note, idea, answer, Chrome page, selected area and added file it was given, in any session, plus its own Graphify graph. Projects stay until you delete them (**Delete project** in the Knowledge graph pane); context older than `KLAIR_RETENTION_DAYS` is pruned from them.
+- **A session** is the time you use Klair. It holds no context, only the projects you pulled into it (in order: fn 1, fn 2, …) and when each was active.
+- **Starting:** the Start window lists your projects. Tick the ones for this session (or make new ones), then **Start session**; the first ticked is active. Each brings the context from its earlier sessions; a new project starts empty.
+- **During a session:** what you give Klair goes into the active project. Switch with **fn N** / **⌃⌥N** (the session's Nth project), the panel's project chip, or the Start window ("This session"), where you can also pull in another saved project or a new one. Ideas and answers only draw on the active project.
+- **Ending:** every project worked in gets its graph rebuilt and is uploaded to TigerData (replacing its earlier copy).
+- **Deleting a session** (Sessions window) removes only the session; each project keeps everything it was given in it.
 
-Databases from before projects are migrated on first start: each old session becomes a project with the same name, slot and data, its time becomes a session, and its folder moves from `sessions/local-<id>` to `projects/local-<id>` (local SQLite and TigerData alike).
+For example: a session with SWE and ML, where you work in SWE; then a new session with SWE and OS. SWE comes with everything from the first session, and OS starts empty.
+
+Databases from before projects are migrated on first start: each old session becomes a project with the same name and data, and its folder moves from `sessions/local-<id>` to `projects/local-<id>` (local SQLite and TigerData alike).
 
 ## Knowledge graph
 
@@ -216,7 +220,7 @@ sqlite3 -header -column "$DB" "select id, added_at, name, kind, extract_status, 
 
 ## Demo script (from the brief)
 
-1. Run `pnpm dev` (or `pnpm app`). On the Start window, check the connection rows, make a project named "ML" and press **⌘↵** (that starts the session).
+1. Run `pnpm dev` (or `pnpm app`). On the Start window, check the connection rows, add projects "ML" and "SW", tick both and press **⌘↵** (ML, ticked first, is active).
 2. Open an encyclopedia article on machine learning, then switch to its _Gradient descent_ page and stay on the _Learning rate_ section.
 3. After the pause time (1 min by default; change it in the menu bar popover), "N ideas for this section" appears beside the flower.
 4. Tap **fn** / **⌃⌥K**: the panel opens over the flower's corner and shows _Where you are_ + the ideas (with the extension, sources include "Full page · …").
@@ -225,7 +229,7 @@ sqlite3 -header -column "$DB" "select id, added_at, name, kind, extract_status, 
 7. Download a PDF on the topic and click **Add** on the flower's prompt, then ask "summarize the paper I just downloaded".
 8. Press **esc**: the panel closes and focus returns to the article.
 9. Switch back to the _Machine learning_ tab and open Klair. Answers cite "Earlier in this project · …" from local search and Graphify, and the extra ideas build on what the project covered.
-10. Press **⌃⌥2** (or make a second project, "SW", in the Start window) and look at some code: the session keeps running, and SW's ideas and answers never draw on ML.
+10. Press **⌃⌥2** to make SW active and look at some code: the session keeps running, and SW's ideas and answers never draw on ML.
 11. Open the menu bar popover › **All sessions** (⌘O). The session shows both projects (ML · SW) and a timeline across them. **Session insights** shows time on topic and the stuck spot: read on the Mac while the session runs, and from the TigerData continuous aggregate once its projects are uploaded.
 12. Press **Knowledge graph** (⌘G): ML's Graphify graph opens; pick SW with ⌘2. After **End** in the popover, both graphs rebuild and both projects upload.
 

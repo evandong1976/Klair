@@ -6,11 +6,14 @@ import { isMod, klair, useKlairState } from '../lib/useKlair'
 import { HealthRow } from './HealthRow'
 import { prettyAccel } from '../../../shared/keys'
 
-// Opening Klair: pick the project to work in (keys 1–9, the same numbers as the fn 1–9
-// switcher), or make a new one. Picking starts a session (the time you work), or, while
-// one runs, switches project within it. The very first time there is no project yet,
-// so it goes straight to naming one (Start.dc.html) with connection health
-// (BUILD_PROMPT §4.1). Privacy copy follows BUILD_PROMPT §2, kept literally true.
+// The Start window. Projects ("ML", "SWE", "OS") keep the context; a session is the
+// time you use Klair, with the projects you pull into it.
+//   No session running: tick the projects for this session (or make new ones) and
+//   start. Their order is fn 1, fn 2, … and the first is active.
+//   A session running: its projects (fn N switches to the Nth; click to switch), and
+//   "Add a project" to pull in another saved project or a new one.
+// Connection health (BUILD_PROMPT §4.1) shows when starting, or when something needs
+// attention. Privacy copy follows BUILD_PROMPT §2, kept literally true.
 
 function lastUsed(p: ProjectItem): string {
   const d = new Date(p.lastUsedAt ?? p.createdAt)
@@ -18,19 +21,26 @@ function lastUsed(p: ProjectItem): string {
   return `${day}, ${d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`
 }
 
+function notesLabel(p: ProjectItem): string {
+  return p.notes
+    ? `${p.notes} note${p.notes === 1 ? '' : 's'} · last used ${lastUsed(p)}`
+    : 'No context yet'
+}
+
+const ROW =
+  'flex items-center gap-3 px-3 min-h-[52px] rounded-[14px] border bg-white text-left cursor-pointer transition-colors disabled:opacity-45 disabled:cursor-not-allowed'
+
 export function StartWindow(): React.JSX.Element {
   const state = useKlairState()
   const [health, setHealth] = useState<HealthReport | null>(null)
   const [checking, setChecking] = useState(false)
+  const [projects, setProjects] = useState<ProjectItem[] | null>(null)
+  // Ticked for the new session, in the order ticked (= fn 1, fn 2, …).
+  const [picked, setPicked] = useState<number[]>([])
   const [name, setName] = useState('')
   const nameRef = useRef<HTMLInputElement>(null)
-  // null until the list has loaded, so the window doesn't flash the wrong screen.
-  const [projects, setProjects] = useState<ProjectItem[] | null>(null)
-  const [wantsNew, setWantsNew] = useState(false)
-  const slotted = (projects ?? [])
-    .filter((s) => s.slot !== null)
-    .sort((a, b) => (a.slot as number) - (b.slot as number))
-  const creating = wantsNew || (projects !== null && slotted.length === 0)
+  const running = !!state?.session
+  const inSession = new Set((state?.sessionProjects ?? []).map((p) => p.id))
 
   const recheck = useCallback(async (): Promise<void> => {
     setChecking(true)
@@ -41,16 +51,18 @@ export function StartWindow(): React.JSX.Element {
     }
   }, [])
 
+  const loadProjects = useCallback((): Promise<void> => klair.listProjects().then(setProjects), [])
+
   useEffect(() => {
     void klair.getHealth().then(setHealth)
-    void klair.listProjects().then(setProjects)
+    void loadProjects()
     const onFocus = (): void => {
       void klair.runHealth().then(setHealth)
-      void klair.listProjects().then(setProjects)
+      void loadProjects()
     }
     window.addEventListener('focus', onFocus)
     return () => window.removeEventListener('focus', onFocus)
-  }, [])
+  }, [loadProjects])
 
   const check = (id: string): HealthReport['checks'][number] | undefined =>
     health?.checks.find((c) => c.id === id)
@@ -60,40 +72,52 @@ export function StartWindow(): React.JSX.Element {
   const localOk = check('local')?.status === 'ok'
   const tigerOk = !!check('tigerdata') && check('tigerdata')?.status !== 'fail'
   const ready = !!health && screenOk && localOk
+
+  const toggle = (id: number): void =>
+    setPicked((cur) => (cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]))
   const start = (): void => {
-    if (ready && creating) void klair.startSession(name)
+    if (ready && picked.length) void klair.startSession(picked)
   }
-  const pick = (p: ProjectItem): void => {
-    if (ready) void klair.switchProject(p.id)
-  }
-  const newProject = (): void => {
-    setWantsNew(true)
-    setTimeout(() => nameRef.current?.focus(), 0)
+  /** A new project: ticked for the new session, or pulled into the running one. */
+  const create = async (): Promise<void> => {
+    const n = name.trim()
+    if (!n) return
+    const p = await klair.createProject(n)
+    setName('')
+    if (running) await klair.addToSession(p.id)
+    else setPicked((cur) => [...cur, p.id])
+    await loadProjects()
   }
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
       const typing = document.activeElement?.tagName === 'INPUT'
       if (e.key === 'Escape') {
-        if (wantsNew && slotted.length) return setWantsNew(false)
+        if (typing) return (document.activeElement as HTMLElement).blur()
         return window.close()
       }
-      if (creating) {
-        if (e.key === 'Enter' && (isMod(e) || typing)) {
+      if (typing) {
+        if (e.key === 'Enter' && !isMod(e)) {
           e.preventDefault()
-          start()
+          void create()
         }
+        if (!(isMod(e) && e.key === 'Enter')) return
+      }
+      if (isMod(e) && e.key === 'Enter' && !running) {
+        e.preventDefault()
+        return start()
+      }
+      if (isMod(e) && e.key.toLowerCase() === 'n') {
+        e.preventDefault()
+        nameRef.current?.focus()
         return
       }
-      // Picking: 1–9 (with or without ⌘) works in that project, ⌘N makes a new one.
+      // In a running session, 1–9 switch to its Nth project (like fn N).
       const slot = /^Digit([1-9])$/.exec(e.code)?.[1]
-      const target = slot ? slotted.find((s) => s.slot === Number(slot)) : undefined
-      if (target && !e.altKey && !e.ctrlKey) {
+      const target = slot ? state?.sessionProjects.find((p) => p.slot === Number(slot)) : undefined
+      if (running && target && !e.altKey && !e.ctrlKey) {
         e.preventDefault()
-        pick(target)
-      } else if (isMod(e) && e.key.toLowerCase() === 'n') {
-        e.preventDefault()
-        newProject()
+        void klair.switchProject(target.id)
       }
     }
     window.addEventListener('keydown', onKey)
@@ -105,8 +129,30 @@ export function StartWindow(): React.JSX.Element {
     .filter(Boolean)
 
   const openKey = state ? prettyAccel(state.toggleKey) : '⌃⌥K'
-  // While picking, setup details only show if something needs attention.
-  const showSetup = creating || (!!health && !ready)
+  // Setup details show when starting, or while something needs attention.
+  const showSetup = !running || (!!health && !ready)
+  const others = (projects ?? []).filter((p) => !inSession.has(p.id))
+
+  const newProject = (
+    <div className="flex gap-2">
+      <input
+        ref={nameRef}
+        aria-label="New project name"
+        value={name}
+        placeholder={running ? 'New project for this session, e.g. OS' : 'New project, e.g. OS'}
+        onChange={(e) => setName(e.target.value)}
+        className="flex-1 h-11 box-border px-3.5 rounded-[12px] border border-line-input bg-white text-[15px] font-medium text-ink outline-none"
+      />
+      <Button
+        onClick={() => void create()}
+        disabled={!name.trim()}
+        keyHint="↵"
+        className="h-11 text-[14px]"
+      >
+        Add
+      </Button>
+    </div>
+  )
 
   return (
     <div className="bg-ground/55 h-screen overflow-y-auto box-border pt-10 px-9 pb-7 flex flex-col gap-5">
@@ -116,63 +162,90 @@ export function StartWindow(): React.JSX.Element {
         <div className="flex flex-col gap-1">
           <PixelLabel className="text-[12px]">Klair</PixelLabel>
           <h1 className="m-0 text-[28px] font-extrabold tracking-[-0.01em]">
-            {creating ? 'New project' : state?.session ? 'Switch project' : 'Pick a project'}
+            {running ? 'This session' : 'Start a session'}
           </h1>
         </div>
       </div>
 
-      {creating ? (
+      {running ? (
         <>
           <p className="m-0 text-[15px] leading-[1.5] text-ink-2 text-pretty">
-            A project (say &ldquo;ML&rdquo; or &ldquo;SW&rdquo;) keeps everything Klair gathers for
-            it, with its own knowledge graph. Klair watches your screen while you work; when you
-            pause, the flower offers ideas. Tap fn (or {openKey}) to open it, then ⌘1–9 to pick.
-            Nothing runs until you do.
+            What you give Klair goes into the active project. Switch with its number here, or fn 1–9
+            (⌃⌥1–9) from anywhere; the session keeps running.
           </p>
-          <div className="flex flex-col gap-2">
-            <label htmlFor="sname" className="text-[13.5px] font-bold">
-              Project name
-            </label>
-            <input
-              id="sname"
-              ref={nameRef}
-              value={name}
-              placeholder="e.g. ML"
-              onChange={(e) => setName(e.target.value)}
-              className="h-11 box-border px-3.5 rounded-[12px] border border-line-input bg-white text-[15px] font-medium text-ink outline-none"
-            />
-          </div>
-        </>
-      ) : (
-        <>
-          <p className="m-0 text-[15px] leading-[1.5] text-ink-2 text-pretty">
-            Each project keeps its own notes, ideas and knowledge graph. Press its number here, or
-            fn 1–9 (⌃⌥1–9) from anywhere to switch while you work; the session keeps running.
-          </p>
-          <nav aria-label="Your projects" className="flex flex-col gap-2">
-            {slotted.map((s) => {
-              const running = state?.project?.id === s.id
+          <nav aria-label="Projects in this session" className="flex flex-col gap-2">
+            {(state?.sessionProjects ?? []).map((p) => {
+              const active = state?.project?.id === p.id
+              const item = projects?.find((x) => x.id === p.id)
               return (
                 <button
-                  key={s.id}
+                  key={p.id}
                   type="button"
-                  disabled={!ready}
-                  onClick={() => pick(s)}
-                  className="flex items-center gap-3 px-3 min-h-[52px] rounded-[14px] border border-line bg-white text-left cursor-pointer transition-colors hover:bg-blush-3 hover:border-blush-line focus:bg-blush-3 focus:border-blush-line disabled:opacity-45 disabled:cursor-not-allowed"
+                  onClick={() => void klair.switchProject(p.id)}
+                  className={`${ROW} ${active ? 'border-blush-line bg-blush-3' : 'border-line hover:bg-blush-3 hover:border-blush-line'}`}
                 >
-                  <Key variant={running ? 'selected' : 'default'}>{String(s.slot)}</Key>
+                  <Key variant={active ? 'selected' : 'default'}>{String(p.slot)}</Key>
                   <span className="flex-1 min-w-0 flex flex-col gap-0.5">
-                    <span className="text-[15px] font-bold truncate">{s.name}</span>
+                    <span className="text-[15px] font-bold truncate">{p.name}</span>
                     <span className="text-[12.5px] text-muted">
-                      {running
-                        ? 'Working in it now'
-                        : `${s.notes} note${s.notes === 1 ? '' : 's'} · last used ${lastUsed(s)}`}
+                      {active ? 'Active: context goes here' : item ? notesLabel(item) : ''}
                     </span>
                   </span>
                 </button>
               )
             })}
           </nav>
+          <div className="flex flex-col gap-2">
+            <PixelLabel>Add a project</PixelLabel>
+            {others.map((p) => (
+              <button
+                key={p.id}
+                type="button"
+                onClick={() => void klair.addToSession(p.id)}
+                className={`${ROW} border-line hover:bg-blush-3 hover:border-blush-line`}
+              >
+                <span className="flex-none w-[26px] text-center text-[18px] text-ink-3">+</span>
+                <span className="flex-1 min-w-0 flex flex-col gap-0.5">
+                  <span className="text-[15px] font-bold truncate">{p.name}</span>
+                  <span className="text-[12.5px] text-muted">{notesLabel(p)}</span>
+                </span>
+              </button>
+            ))}
+            {newProject}
+          </div>
+        </>
+      ) : (
+        <>
+          <p className="m-0 text-[15px] leading-[1.5] text-ink-2 text-pretty">
+            Pick the projects for this session. Each keeps the context from earlier sessions; what
+            you give Klair goes into the active one (the first, then switch with fn 1–9). When you
+            pause, the flower offers ideas: tap fn (or {openKey}) and ⌘1–9 to pick.
+          </p>
+          <nav aria-label="Your projects" className="flex flex-col gap-2">
+            {(projects ?? []).map((p) => {
+              const n = picked.indexOf(p.id) + 1
+              return (
+                <button
+                  key={p.id}
+                  type="button"
+                  role="checkbox"
+                  aria-checked={n > 0}
+                  onClick={() => toggle(p.id)}
+                  className={`${ROW} ${n ? 'border-blush-line bg-blush-3' : 'border-line hover:bg-blush-3 hover:border-blush-line'}`}
+                >
+                  <Key variant={n ? 'selected' : 'default'}>{n ? String(n) : ' '}</Key>
+                  <span className="flex-1 min-w-0 flex flex-col gap-0.5">
+                    <span className="text-[15px] font-bold truncate">{p.name}</span>
+                    <span className="text-[12.5px] text-muted">
+                      {n ? `fn ${n} in this session · ` : ''}
+                      {notesLabel(p)}
+                    </span>
+                  </span>
+                </button>
+              )
+            })}
+          </nav>
+          {newProject}
         </>
       )}
 
@@ -255,40 +328,25 @@ export function StartWindow(): React.JSX.Element {
       ) : null}
 
       <div className="mt-auto flex justify-end gap-2.5">
-        {creating ? (
-          <>
-            <Button
-              onClick={() => (slotted.length ? setWantsNew(false) : window.close())}
-              keyHint="esc"
-              className="h-11 text-[14px]"
-            >
-              {slotted.length ? 'Back' : 'Not now'}
-            </Button>
-            <Button
-              kind="primary"
-              onClick={start}
-              disabled={!ready}
-              keyHint="⌘↵"
-              className="h-11 text-[14px]"
-            >
-              {state?.session ? 'Switch to it' : 'Start observing'}
-            </Button>
-          </>
-        ) : (
-          <>
-            <Button
-              onClick={() => void klair.openWindow('sessions')}
-              className="h-11 text-[14px] mr-auto"
-            >
-              All sessions
-            </Button>
-            <Button onClick={() => window.close()} keyHint="esc" className="h-11 text-[14px]">
-              Not now
-            </Button>
-            <Button onClick={newProject} keyHint="⌘N" className="h-11 text-[14px]">
-              New project
-            </Button>
-          </>
+        <Button
+          onClick={() => void klair.openWindow('sessions')}
+          className="h-11 text-[14px] mr-auto"
+        >
+          All sessions
+        </Button>
+        <Button onClick={() => window.close()} keyHint="esc" className="h-11 text-[14px]">
+          {running ? 'Close' : 'Not now'}
+        </Button>
+        {running ? null : (
+          <Button
+            kind="primary"
+            onClick={start}
+            disabled={!ready || !picked.length}
+            keyHint="⌘↵"
+            className="h-11 text-[14px]"
+          >
+            {picked.length > 1 ? `Start with ${picked.length} projects` : 'Start session'}
+          </Button>
         )}
       </div>
     </div>

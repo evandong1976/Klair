@@ -89,7 +89,7 @@ export interface SessionInfo {
   status: 'active' | 'paused' | 'ended'
 }
 
-/** The project everything captured right now goes into. */
+/** A project pulled into the running session; `slot` is its position there (fn N). */
 export interface ProjectInfo {
   id: number
   name: string
@@ -98,7 +98,10 @@ export interface ProjectInfo {
 
 export interface KlairState {
   session: SessionInfo | null
+  /** The active project: everything captured right now goes into it. */
   project: ProjectInfo | null
+  /** The projects pulled into the running session, in order (fn 1–9). */
+  sessionProjects: ProjectInfo[]
   observing: ObservingState
   saving: boolean // false → "This session isn't being saved"
   flower: FlowerMode
@@ -167,7 +170,8 @@ export interface SessionListItem {
   startedAt: string
   endedAt: string | null
   status: SessionInfo['status']
-  projects: { id: number; name: string; ms: number }[]
+  /** In the order they were pulled in (position = fn N in the session), with time active. */
+  projects: { id: number; name: string; ms: number; position: number }[]
 }
 
 /** A project's Graphify graph, for the Knowledge graph pane. */
@@ -241,9 +245,13 @@ export interface KlairApi {
   setPanelSize(width: number, height: number): Promise<void>
   setFlowerInteractive(interactive: boolean): Promise<void>
 
-  /** Make a project with this name and work in it (starting a session if none runs). */
-  startSession(name: string): Promise<void>
-  /** Work in this project: switches within the running session, or starts one. */
+  /** Start a session with these projects pulled in (first = active); adds them if one runs. */
+  startSession(projectIds: number[]): Promise<void>
+  /** A new, empty project. */
+  createProject(name: string): Promise<ProjectItem>
+  /** Pull a saved project into the running session (without switching to it). */
+  addToSession(projectId: number): Promise<void>
+  /** Work in this project: pulled into the running session if needed, or starts one. */
   switchProject(id: number): Promise<void>
   pause(): Promise<void>
   resume(): Promise<void>
@@ -308,6 +316,8 @@ export const KLAIR_INVOKE_METHODS: KlairInvokeMethod[] = [
   'setPanelSize',
   'setFlowerInteractive',
   'startSession',
+  'createProject',
+  'addToSession',
   'switchProject',
   'pause',
   'resume',

@@ -113,8 +113,9 @@ export function GraphWindow(): React.JSX.Element {
         e.preventDefault()
         rebuild()
       }
-      const slot = /^Digit([1-9])$/.exec(e.code)?.[1]
-      const p = slot ? projects?.find((x) => x.slot === Number(slot)) : undefined
+      // ⌘N: the Nth project in the picker.
+      const n = /^Digit([1-9])$/.exec(e.code)?.[1]
+      const p = n ? projects?.[Number(n) - 1] : undefined
       if (p) {
         e.preventDefault()
         setSelected(p.id)
@@ -145,9 +146,9 @@ export function GraphWindow(): React.JSX.Element {
                 }}
                 className="h-10 max-w-[320px] px-3 rounded-[12px] border border-line-input bg-white text-[18px] font-extrabold text-ink outline-none cursor-pointer"
               >
-                {(projects ?? []).map((p) => (
+                {(projects ?? []).map((p, i) => (
                   <option key={p.id} value={p.id}>
-                    {`${p.slot ? `${p.slot} · ` : ''}${p.name}`}
+                    {`${i < 9 ? `${i + 1} · ` : ''}${p.name}`}
                   </option>
                 ))}
               </select>

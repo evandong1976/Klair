@@ -73,9 +73,7 @@ export function FlowerWindow(): React.JSX.Element | null {
     } else if (s.notice?.kind === 'switched') {
       pill = (
         <span className="surface flex items-center h-[42px] px-4 rounded-full text-[13.5px] font-semibold text-ink-2">
-          {s.notice.detail?.startsWith('No project')
-            ? s.notice.detail
-            : `Now in ${s.notice.detail}`}
+          {s.notice.detail?.startsWith('No ') ? s.notice.detail : `Now in ${s.notice.detail}`}
         </span>
       )
     } else if (offer) {

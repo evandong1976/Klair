@@ -186,3 +186,45 @@ test('added files are stored, searchable by content and exported', async () => {
   assert.deepEqual(await local.pendingIndexFiles(id), [fid])
   assert.equal(local.exportProject(id)?.files[0].name, 'adam-paper.pdf')
 })
+
+test('a session holds the projects pulled into it, numbered fn 1, fn 2, …', async () => {
+  const swe = await projectWithNotes('swe-topic')
+  const ml = await local.createProject('ml-topic')
+  const os = await local.createProject('os-topic')
+  // Session 1: SWE and ML. Context goes into the active project (SWE).
+  const s1 = await local.startSession()
+  assert.equal(await local.addSessionProject(s1.id, swe), 1)
+  assert.equal(await local.addSessionProject(s1.id, ml.id), 2)
+  assert.equal(await local.addSessionProject(s1.id, swe), 1) // already in: same place
+  await local.openSpan(s1.id, swe)
+  await local.insertNote({ projectId: swe, provenance: 'observed', body: 'swe-topic: big O' })
+  await local.setSessionStatus(s1.id, 'ended')
+  const one = await local.getSession(s1.id)
+  // ML is in the session though nothing was captured in it.
+  assert.deepEqual(
+    one?.projects.map((p) => [p.position, p.name]),
+    [
+      [1, 'swe-topic'],
+      [2, 'ml-topic']
+    ]
+  )
+  assert.equal((await local.sessionProjectAt(s1.id, 2))?.id, ml.id)
+  assert.equal(await local.sessionProjectAt(s1.id, 3), null)
+
+  // Session 2: SWE and OS. SWE brings its context; OS starts empty.
+  const s2 = await local.startSession()
+  await local.addSessionProject(s2.id, swe)
+  await local.addSessionProject(s2.id, os.id)
+  assert.equal((await local.getProject(swe))?.notes, 2)
+  assert.equal((await local.getProject(os.id))?.notes, 0)
+  assert.equal((await local.searchNotes('big', { projectId: swe })).length, 1)
+
+  // Deleting session 1 removes the session only; SWE keeps everything it was given.
+  await local.deleteSession(s1.id)
+  assert.equal(await local.getSession(s1.id), null)
+  assert.equal((await local.getProject(swe))?.notes, 2)
+  assert.deepEqual(
+    (await local.getSession(s2.id))?.projects.map((p) => p.name),
+    ['swe-topic', 'os-topic']
+  )
+})
