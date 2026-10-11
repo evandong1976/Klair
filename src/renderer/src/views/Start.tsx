@@ -51,7 +51,16 @@ export function StartWindow(): React.JSX.Element {
     }
   }, [])
 
-  const loadProjects = useCallback((): Promise<void> => klair.listProjects().then(setProjects), [])
+  // Projects deleted elsewhere (the graph pane) drop out of the ticked list too, or
+  // they would keep their fn number and push new ones down.
+  const loadProjects = useCallback(
+    (): Promise<void> =>
+      klair.listProjects().then((l) => {
+        setProjects(l)
+        setPicked((cur) => cur.filter((id) => l.some((p) => p.id === id)))
+      }),
+    []
+  )
 
   useEffect(() => {
     void klair.getHealth().then(setHealth)

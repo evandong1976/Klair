@@ -245,7 +245,9 @@ async function activate(p: { id: number; name: string }): Promise<void> {
  * first is active. If a session is already running, they are added to it instead.
  */
 export async function startSession(projectIds: number[]): Promise<void> {
-  const ids = [...new Set(projectIds.filter((n) => Number.isInteger(n) && n > 0))]
+  const ids: number[] = []
+  for (const n of new Set(projectIds))
+    if (Number.isInteger(n) && n > 0 && (await store.projectExists(n))) ids.push(n)
   if (!ids.length) return
   if (sessionId) {
     for (const id of ids) await store.addSessionProject(sessionId, id)
