@@ -1,8 +1,11 @@
-import { app, systemPreferences } from 'electron'
+import { execFile } from 'child_process'
+import { app, shell, systemPreferences } from 'electron'
 import { createReadStream, existsSync } from 'fs'
 import { copyFile, readdir, readFile, rm, stat, unlink, writeFile } from 'fs/promises'
 import { join } from 'path'
+import { promisify } from 'util'
 import type { AnswerOutput } from '../shared/blocks'
+import { isProjectType, type ProjectType } from '../shared/options'
 import type {
   ProjectItem,
   DownloadOffer,
@@ -42,7 +45,7 @@ import {
 import { filesDir, notesDir, PROJECT_DIR_PREFIX, projectDir, projectsRoot, shotsDir } from './paths'
 import { retrieve } from './retrieve'
 import { getState, setState } from './state'
-import { suggestionsFromNote } from './suggest'
+import { defaultSuggestions, suggestionsFromNote } from './suggest'
 import { deleteRemote, uploadPending } from './upload'
 import * as windows from './windows'
 
@@ -64,12 +67,18 @@ interface CaptureMem {
   /** The Chrome page this screenshot shows, when the note model matched them. */
   pageId: number | null
   source: store.CaptureSource
+  /** What the project had covered when this screen was noted (the note model saw it). */
+  context: string
 }
 
 /** The running session: only a span of time. */
 let sessionId: number | null = null
 /** The active project: everything captured now goes into it. */
 let projectId: number | null = null
+/** Its type: which menu of options it is offered (shared/options.ts). */
+let projectType: ProjectType = 'work'
+/** The list that fits the screen, kept while "All options" is showing the whole menu. */
+let shortSet: SuggestionSet | null = null
 let loop: CaptureLoop | null = null
 let tickTimer: NodeJS.Timeout | null = null
 let flushTimer: NodeJS.Timeout | null = null
@@ -121,7 +130,8 @@ let briefAfterNext = false
  * options must not vanish because something behind the panel changed.
  */
 function setIdle(why: IdleWhy | null, seen: string | null = null): void {
-  if (why && getState().panel !== 'closed') {
+  // (With no options on show there is nothing to protect, so it goes quiet at once.)
+  if (why && getState().panel !== 'closed' && getState().suggestions) {
     idleOnClose = { why, seen }
     return
   }
@@ -169,11 +179,13 @@ function apply(effects: Effect[]): void {
   for (const e of effects) {
     switch (e.type) {
       case 'requestSuggestions':
-        void doSuggest(e.generationId, e.captureId)
+        void doSuggest(e.generationId, e.captureId, e.reason)
         break
       case 'publishSuggestions':
         setState({ suggestions: e.set, nudge: getState().panel === 'closed' && !getState().idle })
-        if (projectId) {
+        // Only the list checked against the screen is kept: not the standing three shown
+        // while waiting for it, nor the whole menu under "All options".
+        if (projectId && !e.set.thinking && !e.set.all && !setDbIds.has(e.set.id)) {
           const sid = projectId
           store
             .insertSuggestionSet({
@@ -205,6 +217,10 @@ function apply(effects: Effect[]): void {
         break
       }
       case 'execute':
+        if (e.idea.open) {
+          void openFor(e.idea.open)
+          break
+        }
         void execute({
           set: e.set,
           idea: e.idea,
@@ -237,10 +253,17 @@ async function cannotObserve(): Promise<Notice | null> {
 }
 
 /** Make `p` the active project. Nothing from the previous project's screen carries over. */
-async function enterProject(p: { id: number; name: string; slot: number | null }): Promise<void> {
+async function enterProject(p: {
+  id: number
+  name: string
+  slot: number | null
+  type: ProjectType
+}): Promise<void> {
   await flushActivity() // buffered activity belongs to the project it was seen in
   cancelExecution()
   projectId = p.id
+  projectType = p.type
+  shortSet = null
   captures.clear()
   notePromises.clear()
   livePage = null
@@ -252,7 +275,7 @@ async function enterProject(p: { id: number; name: string; slot: number | null }
   lastAnswerCaptureId = null
   offered.clear() // download offers belong to the project they appeared in
   setState({
-    project: { id: p.id, name: p.name, slot: p.slot },
+    project: { id: p.id, name: p.name, slot: p.slot, type: p.type },
     notice: null,
     suggestions: null,
     answer: null,
@@ -270,7 +293,12 @@ async function enterProject(p: { id: number; name: string; slot: number | null }
 /** Publish the session's projects (fn 1–9 order) and the active one's position. */
 async function syncSessionProjects(): Promise<void> {
   const list = sessionId ? await store.sessionProjects(sessionId).catch(() => []) : []
-  const sessionProjects = list.map((p) => ({ id: p.id, name: p.name, slot: p.position }))
+  const sessionProjects = list.map((p) => ({
+    id: p.id,
+    name: p.name,
+    slot: p.position,
+    type: p.type
+  }))
   setState({
     sessionProjects,
     project: sessionProjects.find((p) => p.id === projectId) ?? null
@@ -278,11 +306,11 @@ async function syncSessionProjects(): Promise<void> {
 }
 
 /** Make `p` (already in the running session) the active project. */
-async function activate(p: { id: number; name: string }): Promise<void> {
+async function activate(p: { id: number; name: string; type: ProjectType }): Promise<void> {
   if (!sessionId) return
   windows.closeStart()
   if (p.id !== projectId) {
-    await enterProject({ id: p.id, name: p.name, slot: null })
+    await enterProject({ id: p.id, name: p.name, slot: null, type: p.type })
     await store.openSpan(sessionId, p.id)
     flash({ kind: 'switched', detail: p.name })
   }
@@ -321,7 +349,7 @@ export async function startSession(projectIds: number[]): Promise<void> {
       observing: 'on',
       saving: true
     })
-    await enterProject({ id: first.id, name: first.name, slot: null })
+    await enterProject({ id: first.id, name: first.name, slot: null, type: first.type })
     await store.openSpan(s.id, first.id)
     await syncSessionProjects()
     windows.closeStart()
@@ -332,8 +360,25 @@ export async function startSession(projectIds: number[]): Promise<void> {
 }
 
 /** A new, empty project (pulled into a session separately). */
-export async function createProject(name: string): Promise<ProjectItem> {
-  return store.createProject(name.trim() || 'Project')
+export async function createProject(name: string, type?: ProjectType): Promise<ProjectItem> {
+  return store.createProject(name.trim() || 'Project', isProjectType(type) ? type : undefined)
+}
+
+/**
+ * Change the active project's type. Its menu changes with it, so nothing shown for the
+ * old type carries over: the screen is read again and checked against the new menu.
+ */
+export async function setProjectType(type: ProjectType): Promise<void> {
+  const sid = projectId
+  if (!sid || !isProjectType(type) || type === projectType) return
+  store.setProjectType(sid, type)
+  projectType = type
+  shortSet = null
+  core.resetContext()
+  notedThumb = null
+  setState({ suggestions: null, nudge: false, selection: null })
+  await syncSessionProjects()
+  loop?.refresh()
 }
 
 /** Pull a saved project into the running session, without switching to it. */
@@ -657,7 +702,8 @@ async function onFrame(frame: Frame): Promise<void> {
     capturedAt: frame.at.toISOString(),
     note: null,
     pageId: null,
-    source: 'auto'
+    source: 'auto',
+    context: ''
   }
   captures.set(id, mem)
   if (captures.size > 40) captures.delete(captures.keys().next().value as number)
@@ -666,9 +712,9 @@ async function onFrame(frame: Frame): Promise<void> {
 }
 
 /**
- * What this project has covered so far, for the note model: it lets the ideas for a new
- * screen build on the project (connections, follow-up questions) rather than treat
- * every page as the first one. Only this project's notes are read.
+ * What this project has covered so far, for the note model: the menu entries that build
+ * on the project ("Connect to earlier", "Compare with what I've read") are judged against
+ * it. Only this project's notes are read.
  */
 async function projectContext(sid: number): Promise<string> {
   const notes = await store.recentNotes(sid, 24).catch(() => [])
@@ -694,17 +740,21 @@ export async function activeProjectContext(): Promise<string> {
 /** A note being written for a frame that may or may not end up being kept. */
 interface StartedNote {
   page: (PageContext & { id: number; at: number }) | null
+  /** What the project had covered so far, as given to the note model. */
+  context: string
   note: Promise<VisionNote>
 }
 
 async function startNote(sid: number, frame: Frame, selection = false): Promise<StartedNote> {
   const page = livePage && Date.now() - livePage.at < LIVE_PAGE_MS ? livePage : null
+  const context = await projectContext(sid)
   const note = makeVisionNote(frame.png, frame.hash, frame.meta, sid, page, {
+    type: projectType,
     selection,
-    projectContext: await projectContext(sid)
+    projectContext: context
   })
   note.catch(() => {}) // a dropped note must not surface as an unhandled rejection
-  return { page, note }
+  return { page, context, note }
 }
 
 async function noteFor(
@@ -714,8 +764,12 @@ async function noteFor(
   started?: StartedNote
 ): Promise<VisionNote | null> {
   try {
-    const { page, note: pending } =
-      started ?? (await startNote(sid, frame, mem.source === 'selection'))
+    const {
+      page,
+      context,
+      note: pending
+    } = started ?? (await startNote(sid, frame, mem.source === 'selection'))
+    mem.context = context
     const note = await pending
     mem.note = note
     currentTopic = note.topic
@@ -842,7 +896,8 @@ export async function finishSelection(rect: SelectionRect): Promise<void> {
     capturedAt: at.toISOString(),
     note: null,
     pageId: null,
-    source: 'selection'
+    source: 'selection',
+    context: ''
   }
   captures.set(id, mem)
   notePromises.set(id, noteFor(sid, mem, { at, png, hash, changed: true, meta: lastMeta }))
@@ -1101,23 +1156,57 @@ function pageSource(title: string, captureId: number | null): Provenance {
 
 // ------------------------------------------------------------------ suggestions
 
-async function doSuggest(generationId: number, captureId: number): Promise<void> {
+/** The options for a noted screen: the menu entries its note picked, checked (suggest.ts). */
+async function checkedSet(
+  mem: CaptureMem,
+  note: VisionNote,
+  generationId: number,
+  all = false
+): Promise<SuggestionSet> {
+  const page = mem.pageId ? await store.getPage(mem.pageId).catch(() => null) : null
+  return suggestionsFromNote({
+    type: projectType,
+    captureId: mem.id,
+    generationId,
+    capturedAt: mem.capturedAt,
+    selection: mem.source === 'selection',
+    pageTitle: page?.title ?? null,
+    note,
+    context: mem.context,
+    seen: [note.topic, note.note, page?.title, page?.url, page?.body].filter(Boolean).join('\n'),
+    all
+  })
+}
+
+async function doSuggest(
+  generationId: number,
+  captureId: number,
+  reason: 'dwell' | 'user'
+): Promise<void> {
   const sid = projectId
   if (!sid) return
+  const mem = captures.get(captureId)
+  // The user is waiting (the panel is open) and this screen's note isn't back yet: the
+  // type's three standing options go up at once, and the checked list replaces them.
+  if (mem && !mem.note && reason === 'user') {
+    apply(
+      core.onDefaults(
+        generationId,
+        defaultSuggestions({
+          type: projectType,
+          captureId,
+          generationId,
+          capturedAt: mem.capturedAt,
+          selection: mem.source === 'selection'
+        })
+      )
+    )
+  }
   try {
     const note = await (notePromises.get(captureId) ?? Promise.resolve(null))
-    const mem = captures.get(captureId)
     if (!note || !mem) throw new Error('No note for this screen yet')
-    const page = mem.pageId ? await store.getPage(mem.pageId) : null
-    const set = suggestionsFromNote({
-      captureId,
-      generationId,
-      note,
-      capturedAt: mem.capturedAt,
-      pageTitle: page?.title ?? null,
-      selection: mem.source === 'selection'
-    })
-    apply(core.onSuggestions(generationId, set))
+    if (sid !== projectId) return
+    apply(core.onSuggestions(generationId, await checkedSet(mem, note, generationId)))
   } catch (err) {
     console.warn('suggestions failed:', (err as Error).message)
     apply(core.onSuggestionsFailed(generationId))
@@ -1161,8 +1250,45 @@ export function backToIdeas(): void {
   if (!getState().idle || getState().selection) apply(core.requestNow())
 }
 
-export function pickKey(key: number): void {
-  apply(core.select(key, getState().suggestions?.id))
+/** `setId` is the list the key was pressed against; a pick against an older list is dropped. */
+export function pickKey(key: number, setId?: string): void {
+  apply(core.select(key, setId || getState().suggestions?.id))
+}
+
+/** "All options": the whole menu for this project's type, and back to what fits the screen. */
+export async function toggleAllOptions(): Promise<void> {
+  const set = getState().suggestions
+  if (!set || set.thinking || set.captureId === null) return
+  if (set.all) {
+    if (shortSet?.captureId === set.captureId) apply(core.replace(shortSet))
+    return
+  }
+  const mem = captures.get(set.captureId)
+  if (!mem?.note) return
+  const all = await checkedSet(mem, mem.note, set.generationId, true)
+  if (getState().suggestions?.id !== set.id) return // the screen moved on meanwhile
+  shortSet = set
+  apply(core.replace(all))
+}
+
+const run = promisify(execFile)
+
+/**
+ * "Do it for me": open the page or app its tile named. There is no model call. The
+ * target was checked when the tile was made (shared/open.ts), and picking it was the consent.
+ */
+async function openFor(open: NonNullable<Idea['open']>): Promise<void> {
+  try {
+    if (open.kind === 'url') await shell.openExternal(open.target)
+    else await run('open', ['-a', open.target])
+    closePanel()
+    flash({ kind: 'opened', detail: open.label })
+  } catch (err) {
+    console.warn('open failed:', (err as Error).message)
+    notice({ kind: 'request-failed', detail: `Klair couldn't open ${open.label}.` })
+  } finally {
+    core.executionFinished()
+  }
 }
 
 export function dismissIdeas(): void {
@@ -1295,10 +1421,14 @@ async function execute(run: {
           chars: 0
         }
       : sid
-        ? await retrieve(`${img.topic} ${run.task}`.slice(0, 300), {
-            projectId: sid,
-            excludeCaptureId: run.captureId
-          })
+        ? // A menu option's task is an instruction, not a subject: search on what it is about.
+          await retrieve(
+            `${img.topic} ${run.idea?.option ? (run.idea.about ?? '') : run.task}`.slice(0, 300),
+            {
+              projectId: sid,
+              excludeCaptureId: run.captureId
+            }
+          )
         : {
             text: '',
             sources: [],
@@ -1353,6 +1483,13 @@ async function execute(run: {
           selection: img.selection,
           note: img.note,
           topic: img.topic,
+          project: sid
+            ? {
+                name: getState().project?.name ?? 'Project',
+                type: projectType,
+                brief: briefOf(sid)
+              }
+            : null,
           page: img.page,
           file,
           retrieved,

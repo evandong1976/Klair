@@ -196,11 +196,24 @@ export class ControllerCore {
     }
   }
 
+  /**
+   * The standing options for the project's type, shown at once while the screen is still
+   * being checked. The request stays in flight; its result replaces them (onSuggestions).
+   */
+  onDefaults(generationId: number, set: SuggestionSet): Effect[] {
+    if (generationId !== this.inflightGeneration) return []
+    if (set.captureId !== this.currentCaptureId || this.current) return []
+    this.current = set
+    return [{ type: 'publishSuggestions', set }]
+  }
+
   /** Result of a suggestion request. Late or stale results are dropped. */
   onSuggestions(generationId: number, set: SuggestionSet): Effect[] {
     if (generationId !== this.inflightGeneration) return []
     this.inflightGeneration = null
     if (set.captureId !== this.currentCaptureId) return []
+    // A standing option picked before the check finished keeps running under the new list.
+    if (this.current && this.executingSetId === this.current.id) this.executingSetId = set.id
     this.current = set
     return [{ type: 'publishSuggestions', set }]
   }
@@ -210,7 +223,18 @@ export class ControllerCore {
     this.inflightGeneration = null
     // Allow a quiet retry for the same screen once the cooldown passes.
     this.offeredForCapture = null
-    return []
+    // The standing options stay as they are, no longer marked as being checked.
+    if (!this.current?.thinking) return []
+    this.current = { ...this.current, thinking: false }
+    return [{ type: 'publishSuggestions', set: this.current }]
+  }
+
+  /** Swap the shown list for another made for the same screen ("All options" and back). */
+  replace(set: SuggestionSet): Effect[] {
+    if (!this.current || set.captureId !== this.current.captureId) return []
+    if (this.executingSetId === this.current.id) return []
+    this.current = set
+    return [{ type: 'publishSuggestions', set }]
   }
 
   dismiss(): Effect[] {
@@ -228,7 +252,8 @@ export class ControllerCore {
     if (setId && setId !== set.id) return [{ type: 'rejectSelection', reason: 'stale' }]
     if (this.executingSetId === set.id) return [{ type: 'rejectSelection', reason: 'duplicate' }]
     const idea = set.ideas.find((i) => i.key === key)
-    if (!idea) return [{ type: 'rejectSelection', reason: 'no-such-key' }]
+    // A dimmed option (listed under "All options", can't run here) is not a choice.
+    if (!idea || idea.disabled) return [{ type: 'rejectSelection', reason: 'no-such-key' }]
     this.executingSetId = set.id
     return [{ type: 'execute', set, idea, captureId: set.captureId }]
   }

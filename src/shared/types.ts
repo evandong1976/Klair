@@ -1,5 +1,6 @@
 import type { AnswerBlock, ExplorableTemplate } from './blocks'
 import type { FlowerStyleId } from './flower'
+import type { ProjectType } from './options'
 
 export type ObservingState = 'off' | 'on' | 'paused'
 export type FlowerMode = 'off' | 'observing' | 'ideas' | 'open' | 'paused'
@@ -16,10 +17,18 @@ export interface Idea {
   key: number // 1–9 → ⌘1–9
   title: string
   subtitle: string
-  kind: 'summary' | 'code' | 'quiz' | 'explain' | 'other' | 'interactive'
+  kind: 'summary' | 'code' | 'quiz' | 'explain' | 'other' | 'interactive' | 'action'
   prompt: string
+  /** Which entry of the project type's menu this is (shared/options.ts). */
+  option?: string
+  /** The thing on screen the option is about, when the model named one. */
+  about?: string
   /** Set on an 'interactive' idea: which explainer to build if it is picked. */
   interactive?: { template: ExplorableTemplate; concept: string }
+  /** Set on "Do it for me": what picking it opens (checked by shared/open.ts). */
+  open?: { kind: 'url' | 'app'; target: string; label: string }
+  /** Listed under "All options" but can't run on this screen; the subtitle says why. */
+  disabled?: boolean
 }
 
 export interface SuggestionSet {
@@ -32,6 +41,10 @@ export interface SuggestionSet {
   whereRead: string
   ideas: Idea[]
   sources: Provenance[]
+  /** The type's three standing options, shown while the screen is still being checked. */
+  thinking?: boolean
+  /** The whole menu is listed ("All options"), not only what fits the screen. */
+  all?: boolean
 }
 
 export type AnswerStatus = 'pending' | 'streaming' | 'complete' | 'failed' | 'cancelled'
@@ -59,6 +72,7 @@ export type NoticeKind =
   | 'partial-page'
   | 'stale'
   | 'switched' // just moved to another project; detail is its name
+  | 'opened' // "Do it for me" opened something; detail says what
 
 export interface Notice {
   kind: NoticeKind
@@ -97,6 +111,8 @@ export interface ProjectInfo {
   id: number
   name: string
   slot: number | null
+  /** Work, study or research: decides which options are offered (shared/options.ts). */
+  type: ProjectType
 }
 
 export interface KlairState {
@@ -172,6 +188,7 @@ export interface ProjectItem {
   name: string
   /** 1–9 on the fn 1–9 / ⌃⌥1–9 project switcher; null when all nine are taken. */
   slot: number | null
+  type: ProjectType
   createdAt: string
   lastUsedAt: string | null
   notes: number
@@ -248,7 +265,12 @@ export interface KlairApi {
   closePanel(): Promise<void>
   showShortcuts(): Promise<void>
   backToIdeas(): Promise<void>
-  pickKey(key: number): Promise<void>
+  /** `setId` is the list the key was pressed against; a pick against an older list is dropped. */
+  pickKey(key: number, setId?: string): Promise<void>
+  /** Show the whole menu for this project's type, or go back to what fits the screen. */
+  toggleAllOptions(): Promise<void>
+  /** Change the active project's type; its options change with it. */
+  setProjectType(type: ProjectType): Promise<void>
   ask(text: string): Promise<void>
   reshape(text: string): Promise<void>
   cancel(): Promise<void>
@@ -265,8 +287,8 @@ export interface KlairApi {
 
   /** Start a session with these projects pulled in (first = active); adds them if one runs. */
   startSession(projectIds: number[]): Promise<void>
-  /** A new, empty project. */
-  createProject(name: string): Promise<ProjectItem>
+  /** A new, empty project. With no type, one is guessed from the name. */
+  createProject(name: string, type?: ProjectType): Promise<ProjectItem>
   /** Pull a saved project into the running session (without switching to it). */
   addToSession(projectId: number): Promise<void>
   /** Work in this project: pulled into the running session if needed, or starts one. */
@@ -326,6 +348,8 @@ export const KLAIR_INVOKE_METHODS: KlairInvokeMethod[] = [
   'showShortcuts',
   'backToIdeas',
   'pickKey',
+  'toggleAllOptions',
+  'setProjectType',
   'ask',
   'reshape',
   'cancel',

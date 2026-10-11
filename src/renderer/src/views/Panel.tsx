@@ -1,12 +1,14 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { motion } from 'motion/react'
-import type { AnswerState, KlairState, SuggestionSet } from '../../../shared/types'
+import { AnimatePresence, motion } from 'motion/react'
+import { MENUS, nextType, topOptions, TYPE_META, typeShades } from '../../../shared/options'
+import type { AnswerState, Idea, KlairState, SuggestionSet } from '../../../shared/types'
 import { Block } from '../components/blocks'
 import { AnimatedShinyText } from '../components/magicui/animated-shiny-text'
 import { BlurFade } from '../components/magicui/blur-fade'
 import { BorderBeam } from '../components/magicui/border-beam'
 import { MagicCard } from '../components/magicui/magic-card'
 import { Flower } from '../components/Flower'
+import { TypeIcon } from '../components/TypeIcon'
 import { Button, CloseButton, Key, PixelLabel, PixelProgress, SourceChips } from '../components/ui'
 import { useBloom } from '../lib/useBloom'
 import { isMod, klair, useKlairState } from '../lib/useKlair'
@@ -83,7 +85,16 @@ export function PanelWindow(): React.JSX.Element | null {
       }
       if (s.panel === 'ideas' && !idleNow(s) && !e.shiftKey && /^[1-9]$/.test(e.key)) {
         e.preventDefault()
-        return void klair.pickKey(Number(e.key))
+        // Against the list as it is drawn: if it has just changed, the press is dropped.
+        return void klair.pickKey(Number(e.key), s.suggestions?.id)
+      }
+      if (s.panel === 'ideas' && k === 'o' && !e.shiftKey && !idleNow(s)) {
+        e.preventDefault()
+        return void klair.toggleAllOptions()
+      }
+      if (s.panel === 'ideas' && k === 't' && !e.shiftKey && s.project) {
+        e.preventDefault()
+        return void klair.setProjectType(nextType(s.project.type))
       }
       if (s.panel === 'ideas' && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
         e.preventDefault()
@@ -141,7 +152,10 @@ export function PanelWindow(): React.JSX.Element | null {
   const busy =
     view === 'answer'
       ? state.answer?.status === 'pending' || state.answer?.status === 'streaming'
-      : view === 'ideas' && !!state.session && !state.suggestions && !idleNow(state)
+      : view === 'ideas' &&
+        !!state.session &&
+        (!state.suggestions || !!state.suggestions.thinking) &&
+        !idleNow(state)
 
   return (
     <div ref={rootRef} style={{ width }} className="p-0">
@@ -149,7 +163,8 @@ export function PanelWindow(): React.JSX.Element | null {
         <MagicCard contentClassName="p-5">
           {view !== 'closed' ? <BackdropFlower /> : null}
           <BlurFade key={view} className="flex flex-col gap-4">
-            {state.notice && !['no-history', 'stale', 'switched'].includes(state.notice.kind) ? (
+            {state.notice &&
+            !['no-history', 'stale', 'switched', 'opened'].includes(state.notice.kind) ? (
               <NoticeCard notice={state.notice} />
             ) : null}
             {view === 'shortcuts' ? (
@@ -172,27 +187,47 @@ export function PanelWindow(): React.JSX.Element | null {
   )
 }
 
-/** The project everything goes into right now; click to switch, or open its graph. */
+/**
+ * The project everything goes into right now (click to switch), what kind of project it
+ * is (click or ⌘T to change: its options change with it), and its graph.
+ */
 function ProjectChip({
-  project
+  project,
+  busy
 }: {
   project: NonNullable<KlairState['project']>
+  /** Klair is checking which options fit the screen: the type icon twinkles. */
+  busy: boolean
 }): React.JSX.Element {
+  const shades = typeShades(project.type)
   return (
     <div className="flex items-center justify-between gap-2 text-[12.5px] font-semibold text-ink-3">
-      <button
-        type="button"
-        title="Switch project"
-        onClick={() => void klair.openWindow('start')}
-        className="flex items-center gap-1.5 h-7 pl-1.5 pr-2.5 rounded-full border border-sage-line bg-sage-tint-2 text-sage-deep cursor-pointer hover:bg-sage-tint"
-      >
-        {project.slot ? <Key variant="small">{String(project.slot)}</Key> : null}
-        {project.name}
-      </button>
+      <span className="flex items-center gap-1.5 min-w-0">
+        <button
+          type="button"
+          title="Switch project"
+          onClick={() => void klair.openWindow('start')}
+          className="flex items-center gap-1.5 h-7 pl-1.5 pr-2.5 min-w-0 rounded-full border border-sage-line bg-sage-tint-2 text-sage-deep cursor-pointer hover:bg-sage-tint"
+        >
+          {project.slot ? <Key variant="small">{String(project.slot)}</Key> : null}
+          <span className="truncate">{project.name}</span>
+        </button>
+        <button
+          type="button"
+          title={`A ${TYPE_META[project.type].label.toLowerCase()} project. Change to ${TYPE_META[nextType(project.type)].label.toLowerCase()}: the options change with it.`}
+          onClick={() => void klair.setProjectType(nextType(project.type))}
+          className="flex-none flex items-center gap-1.5 h-7 pl-2 pr-1.5 rounded-full border text-ink-2 cursor-pointer hover:text-ink"
+          style={{ background: shades.tint, borderColor: shades[3] }}
+        >
+          <TypeIcon type={project.type} size={14} busy={busy} />
+          {TYPE_META[project.type].label}
+          <Key variant="small">⌘T</Key>
+        </button>
+      </span>
       <button
         type="button"
         onClick={() => void klair.openGraph(project.id)}
-        className="cursor-pointer hover:text-ink"
+        className="flex-none cursor-pointer hover:text-ink"
       >
         Knowledge graph
       </button>
@@ -294,6 +329,35 @@ function TilePreview({ kind }: { kind: string }): React.JSX.Element {
             strokeLinecap="round"
           />
           <circle cx="30" cy="32" r="3.5" fill="#56623f" />
+        </svg>
+      </span>
+    )
+  // Something Klair opens for you: an arrow leaving a window.
+  if (kind === 'action')
+    return (
+      <span
+        aria-hidden="true"
+        className="flex-none w-14 h-10 rounded-[8px] bg-ground relative overflow-hidden"
+      >
+        <svg viewBox="0 0 56 40" className="absolute inset-0">
+          <rect
+            x="13"
+            y="13"
+            width="20"
+            height="17"
+            rx="3"
+            fill="none"
+            stroke="#c9d1b6"
+            strokeWidth="2"
+          />
+          <path
+            d="M27 21 L42 9 M34 9 H42 V17"
+            fill="none"
+            stroke="#ee8378"
+            strokeWidth="2.2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
         </svg>
       </span>
     )
@@ -402,9 +466,27 @@ function IdeasView({
     )
   }
   const idle = idleNow(state)
+  const type = state.project?.type ?? 'work'
+  // The screen is still being read: nothing to say about it yet.
+  const reading = !set || (!!set.thinking && !set.whereTitle)
+  // Before the first screen of a session is read there is no list at all. The type's
+  // three standing options are drawn in their places, so nothing jumps when they go live.
+  const tiles: Idea[] = set
+    ? set.ideas
+    : topOptions(type).map((o, i) => ({
+        id: o.id,
+        key: i + 1,
+        title: o.title,
+        subtitle: o.line,
+        kind: o.kind,
+        prompt: '',
+        option: o.id
+      }))
+  // The list is shorter than the type's menu (or is the whole menu): offer the other one.
+  const canToggle = !!set && !set.thinking && (!!set.all || set.ideas.length < MENUS[type].length)
   return (
     <>
-      {state.project ? <ProjectChip project={state.project} /> : null}
+      {state.project ? <ProjectChip project={state.project} busy={!idle && reading} /> : null}
       {state.downloads.length ? <DownloadOfferCards offers={state.downloads} /> : null}
       {state.selection ? <SelectionChip selection={state.selection} /> : null}
       {idle ? (
@@ -432,10 +514,12 @@ function IdeasView({
             </div>
           ) : null}
         </div>
-      ) : set ? (
+      ) : set && !reading ? (
         <div className="flex flex-col gap-2">
           <PixelLabel>{state.selection ? 'Your selection' : 'Where you are'}</PixelLabel>
-          <h1 className="m-0 text-[19px] font-extrabold leading-[1.3]">{set.whereTitle}</h1>
+          <h1 className="m-0 text-[19px] font-extrabold leading-[1.3]">
+            {set.whereTitle || 'This screen'}
+          </h1>
           <p className="m-0 text-[14.5px] leading-[1.5] text-ink-2 text-pretty">{set.whereRead}</p>
           <SourceChips sources={set.sources} />
         </div>
@@ -452,26 +536,62 @@ function IdeasView({
         </div>
       )}
 
-      {set && !idle ? (
-        <nav aria-label="Ideas" className="flex flex-col gap-2">
-          {set.ideas.map((idea, i) => (
-            <button
-              key={idea.id}
-              ref={(el) => {
-                tileRefs.current[i] = el
-              }}
-              type="button"
-              onClick={() => void klair.pickKey(idea.key)}
-              className="flex items-center gap-3 p-3 rounded-[16px] border border-line bg-white min-h-16 text-left cursor-pointer transition-colors hover:bg-blush-3 hover:border-blush-line focus:bg-blush-3 focus:border-blush-line"
-            >
-              <Key variant={i === 0 ? 'selected' : 'default'}>{`⌘${idea.key}`}</Key>
-              <span className="flex-1 flex flex-col gap-0.5">
-                <span className="text-[15px] font-bold">{idea.title}</span>
-                <span className="text-[13px] text-muted">{idea.subtitle}</span>
-              </span>
-              <TilePreview kind={idea.kind} />
-            </button>
-          ))}
+      {!idle ? (
+        <nav aria-label="Ideas" className="relative flex flex-col gap-2">
+          <AnimatePresence initial={false} mode="popLayout">
+            {tiles.map((idea, i) => {
+              const live = !!set && !idea.disabled
+              return (
+                // Keyed by option, not by list: a tile that is still offered stays where it
+                // is while the ones around it fade in or out.
+                <motion.button
+                  layout="position"
+                  key={idea.option ?? idea.id}
+                  initial={{ opacity: 0, y: 6 }}
+                  animate={{ opacity: live ? 1 : 0.55, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.98 }}
+                  transition={{ duration: 0.22, ease: 'easeOut' }}
+                  ref={(el) => {
+                    tileRefs.current[i] = el
+                  }}
+                  type="button"
+                  aria-disabled={!live || undefined}
+                  onClick={() => {
+                    if (set && live) void klair.pickKey(idea.key, set.id)
+                  }}
+                  className={`flex items-center gap-3 p-3 rounded-[16px] border border-line bg-white min-h-16 text-left transition-colors ${
+                    live
+                      ? 'cursor-pointer hover:bg-blush-3 hover:border-blush-line focus:bg-blush-3 focus:border-blush-line'
+                      : 'cursor-default'
+                  }`}
+                >
+                  <Key variant={i === 0 && live ? 'selected' : 'default'}>{`⌘${idea.key}`}</Key>
+                  <span className="flex-1 min-w-0 flex flex-col gap-0.5">
+                    <span className="text-[15px] font-bold">{idea.title}</span>
+                    <span className="text-[13px] text-muted line-clamp-2">{idea.subtitle}</span>
+                  </span>
+                  <TilePreview kind={idea.kind} />
+                </motion.button>
+              )
+            })}
+          </AnimatePresence>
+          {canToggle ? (
+            <motion.div layout="position" className="flex justify-end">
+              <button
+                type="button"
+                onClick={() => void klair.toggleAllOptions()}
+                title={
+                  set?.all
+                    ? 'Back to the options that fit this screen'
+                    : `Everything Klair offers a ${TYPE_META[type].label.toLowerCase()} project`
+                }
+                className="flex items-center gap-1.5 h-7 px-1 text-[12.5px] font-semibold text-ink-3 cursor-pointer hover:text-ink"
+              >
+                <Key variant="small">⌘O</Key>
+                {set?.all ? 'Only what fits this screen' : 'All options'}
+              </button>
+            </motion.div>
+          ) : null}
         </nav>
       ) : null}
 
@@ -571,7 +691,7 @@ function AnswerView({
             {answer.kind === 'quiz'
               ? 'Writing your quiz…'
               : answer.kind === 'code'
-                ? 'Building a live demo…'
+                ? 'Writing it out…'
                 : answer.kind === 'interactive'
                   ? 'Building something you can play with…'
                   : 'Working on it…'}

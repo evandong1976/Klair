@@ -17,6 +17,8 @@ const GROUPS: { title: string; rows: [string, string][] }[] = [
     title: 'When Klair is open',
     rows: [
       ['Pick an idea', '⌘1–9'],
+      ['All options, or only what fits the screen', '⌘O'],
+      ['Change the kind of project', '⌘T'],
       ['Ask anything', '⌘K'],
       ['Select an area of the screen', '⌘S'],
       ['Move between ideas', '⌘↑ ⌘↓'],

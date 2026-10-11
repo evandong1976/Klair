@@ -15,7 +15,7 @@ Beyond the screen itself, you can hand Klair more context: **select an area** of
 
 - **Projects hold the context; sessions are time.** A **project** is a topic ("SWE", "ML", "OS") that keeps everything Klair gathers for it, across sessions. A **session** is the time you use Klair, with the projects you pull into it. Everything you give Klair (screens, notes, ideas, answers, Chrome pages, selections, added files, activity) goes into the session's **active project**; switch it with **fn 1–9** / **⌃⌥1–9** (the session's 1st, 2nd, … project) and the session keeps running. Context never crosses projects: ideas and answers only draw on the project you're in. See [Projects and sessions](#projects-and-sessions).
 - **Observes your screen.** Klair checks the screen every 4 s. A screenshot is stored only when it changed substantially since the last stored one (at least 5% of the screen), and a small model (the _change judge_) then confirms it's really new content, so a chat that keeps printing, an animation or a slight scroll doesn't count. Each new screen gets a short note from a vision model, written as observed facts. A second check leaves clearly unrelated screens (a glance at messages while in the "ML" project) out of the project's context.
-- **Offers ideas.** The same note proposes three ideas about the screen (the first is always a summary), plus up to three that build on what the project has covered so far. They appear beside the flower after you've stayed on a screen for the pause time (1 min by default). While the panel is open, a screen change is held so the ideas don't shift under you; it's applied when the panel closes (or when you ask for fresh ideas).
+- **Offers ideas from a fixed menu.** Each project is a **work**, **study** or **research** project, and each type has its own menu of five to eight options, worded once in the code. The same note says which entries fit the screen; the model never writes an option. The type's three standing options are there the moment the panel opens, and the checked list replaces them. They appear beside the flower after you've stayed on a screen for the pause time (1 min by default). While the panel is open, a screen change is held so the ideas don't shift under you; it's applied when the panel closes (or when you ask for fresh ideas). See [Project types and options](#project-types-and-options).
 - **Answers in place.** Pick an idea (**⌘1–9**), type your own question (**⌘K**), then refine the answer with the reshape chips (**⌘⇧1–3**: Shorter, Simpler, More detail). Answers are short markdown, grounded in the screen note plus related notes from the same project, found through the project's Graphify graph and keyword search, so only a small, relevant part of the project is sent.
 - **Selects an area.** **⌘S** in the panel lets you drag out part of the screen; it's captured at full resolution and pinned as the context until you clear it. See [Selecting an area](#selecting-an-area).
 - **Reads whole web pages.** With the Chrome extension, the full text of each page you open joins the active project, so ideas and answers can use the whole page, not just what's visible. See [Chrome extension](#chrome-extension).
@@ -26,7 +26,7 @@ Beyond the screen itself, you can hand Klair more context: **select an area** of
 ## How it works
 
 ```
-screen (every 4 s) ──► substantial change? ──► change judge ──► PNG + captures row (SQLite) ──► vision note + ideas
+screen (every 4 s) ──► substantial change? ──► change judge ──► PNG + captures row (SQLite) ──► vision note + menu picks
 Chrome extension ────► bridge (127.0.0.1:47821) ──► pages row + note ─────────┘ (note sees the page text)
 ~/Downloads ─────────► "Add file?" ──► Add ──► files row + extracted text + note
 ⌘S ──────────────────► selection overlay ──► full-resolution crop ──► capture pinned as context
@@ -111,6 +111,7 @@ Only the fn family is global; ⌘ keys work only while the panel is open. The fu
 | Anywhere         | `fn P` / `⌃⌥P` · `fn Q` / `⌃⌥Q`             | Pause or resume · quiet ideas for 30 min                                                   |
 | Anywhere         | `fn 1–9` / `⌃⌥1–9`                          | Make the session's 1st…9th project active (the session keeps running)                      |
 | Panel            | `⌘1–9` · `⌘↑↓` · `⌘K` · `⌘S` · `⌘/` · `esc` | Pick · move · ask · select an area · all keys · close                                      |
+| Panel            | `⌘O` · `⌘T`                                 | All options, or only what fits the screen · change the project's type                      |
 | Answer           | `⌘[` · `⌘⇧1–3` · `⌘R`                       | Back to ideas · reshape · retry                                                            |
 | Menu bar popover | `⌘P` `⌘E` `⌘1–3` `⌘L` `⌘O` `⌘G` `⌘,`        | Pause · end session · pause time · last answer · all sessions · knowledge graph · settings |
 | Sessions window  | `⌘N` `⌘1–3` `⌘G` `⌘P` `⌘⌫`                  | New · pick session · knowledge graph · pause · delete session (time record only)           |
@@ -129,6 +130,31 @@ Only the fn family is global; ⌘ keys work only while the panel is open. The fu
 For example: a session with SWE and ML, where you work in SWE; then a new session with SWE and OS. SWE comes with everything from the first session, and OS starts empty.
 
 Databases from before projects are migrated on first start: each old session becomes a project with the same name and data, and its folder moves from `sessions/local-<id>` to `projects/local-<id>` (local SQLite and TigerData alike).
+
+## Project types and options
+
+A project is one of three types. The type decides which options the panel offers, and nothing else.
+
+- **Choosing it:** when you create a project, three chips sit under the name box (Work, Study, Research). One is preselected from the name as you type ("CS-UY 4563" and "ML study" read as study, "JEPA papers" as research, anything else as work); click another to override. Older projects are guessed from their name and brief until you set them.
+- **Changing it:** the type chip beside the project chip in the panel, or **⌘T**, steps through the three. The new type's options show at once and the screen is checked again.
+- **The menus** live in `src/shared/options.ts`: each entry's title, second line, the rule for when it fits a screen, and the instruction Klair follows when it is picked.
+
+| Work                   | Study               | Research                    |
+| ---------------------- | ------------------- | --------------------------- |
+| Explain this ★         | Summarize this ★    | Summarize this ★            |
+| Give me ideas ★        | Explain a concept ★ | Claims and evidence ★       |
+| Catch me up ★          | Test me ★           | Explain a concept ★         |
+| Find the problem       | Play with it        | Compare with what I've read |
+| Do it for me           | Connect to earlier  | Carry it over               |
+| Review this            | Worked example      | Open questions              |
+| Draft it               | Key terms           | Play with it                |
+| Write a project prompt |                     |                             |
+
+★ marks the three standing options: shown the moment the panel opens, before the screen has been checked, and always first so their ⌘ numbers stay put.
+
+- **How the list is chosen:** the note call that reads each new screen (`src/main/notes.ts`) is given the type's menu and returns the ids that fit, picked from a closed list. For some entries it also names the thing on screen (a concept, an error, an earlier topic), which becomes the tile's second line. `src/main/suggest.ts` then drops any pick that can't be honoured: **Play with it** needs something an explainer can draw, **Connect to earlier** and **Compare** need an earlier topic that is really in the project (and is not the topic on screen), **Do it for me** needs a checked target.
+- **All options (⌘O):** a small button under the tiles lists the type's whole menu; an entry that can't run on this screen is dimmed and says why. Pressing it again goes back to what fits.
+- **Do it for me** opens one web page or one app, and its tile says exactly which ("Open platform.openai.com/api-keys in your browser"). Picking the tile is the consent; there is no model call. Only an https address or an app name that the screen itself names is ever offered (`src/shared/open.ts`).
 
 ## Knowledge graph
 

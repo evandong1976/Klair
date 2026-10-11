@@ -244,3 +244,17 @@ test('a project keeps a brief and the number of notes it was written from', asyn
     notes: 2
   })
 })
+
+test('a project keeps the type it was given; without one it is guessed from the name', async () => {
+  const guessed = await local.createProject('Thesis research')
+  assert.equal(guessed.type, 'research')
+  const chosen = await local.createProject('Thesis research', 'work')
+  assert.equal(chosen.type, 'work')
+  local.setProjectType(guessed.id, 'study')
+  assert.equal((await local.getProject(guessed.id))?.type, 'study')
+  // An older project with a brief and no type: the brief decides.
+  const old = await local.createProject('ML')
+  assert.equal(old.type, 'work')
+  local.setBrief(old.id, 'The project is studying machine learning from course PDFs.', 2)
+  assert.equal((await local.getProject(old.id))?.type, 'study')
+})

@@ -1,5 +1,5 @@
-// Klair for Chrome: hold fn and click a paragraph, and it is replaced in the page by a
-// short version (one to three sentences) that keeps what matters for the project you
+// Klair for Chrome: hold fn and click a paragraph (or a bulleted item, for its whole
+// list), and it is replaced in the page by a short version (one to three sentences) that keeps what matters for the project you
 // are working on. Runs in the top frame of http/https pages.
 //
 // The fn key never reaches a web page, so the Klair app watches it. When a paragraph is
@@ -22,7 +22,7 @@
   // Each short version on the page: whether it can be shortened again, and how.
   const states = new WeakMap()
 
-  /** The paragraph (or list item, quote, cell) under a click, if it has enough text. */
+  /** The paragraph (or list, quote, cell) under a click, if it has enough text. */
   function paragraphAt(target) {
     if (!(target instanceof Element) || target.closest(BUSY)) return null
     let block = target.closest(BLOCKS)
@@ -38,6 +38,10 @@
         }
       }
     }
+    // A bulleted item stands for its list: all the points (and their sub-points) become
+    // one short version. A list too long to send whole is left to the one item.
+    const list = block?.closest('li')?.parentElement
+    if (list?.matches('ul, ol') && (list.innerText || '').trim().length <= MAX_CHARS) block = list
     if (!block || block.querySelector('klair-condensed')) return null
     return (block.innerText || '').trim().length >= MIN_CHARS ? block : null
   }

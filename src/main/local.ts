@@ -3,6 +3,7 @@ import { app } from 'electron'
 import { existsSync, mkdirSync, readdirSync, renameSync } from 'fs'
 import { dirname, join } from 'path'
 import { DatabaseSync } from 'node:sqlite'
+import { guessType, isProjectType, type ProjectType } from '../shared/options'
 import type {
   InsightRow,
   ProjectItem,
@@ -228,7 +229,10 @@ const ADDED_COLUMNS: [table: string, column: string, type: string][] = [
   // What the project is, in a few sentences, and how many notes that was written from
   // (brief.ts). Kept on this Mac only: it is a working summary, rebuilt from the notes.
   ['projects', 'brief', 'text'],
-  ['projects', 'brief_notes', 'integer not null default 0']
+  ['projects', 'brief_notes', 'integer not null default 0'],
+  // work | study | research: which options the project is offered (shared/options.ts).
+  // Null until the user picks one; until then it is guessed from the name and brief.
+  ['projects', 'type', 'text']
 ]
 
 const CONTEXT_TABLES = [
@@ -445,11 +449,17 @@ export function transaction<T>(fn: () => T): T {
 
 // ---------------------------------------------------------------- projects
 
+/** The type the user chose, or a guess from the project's name and brief. */
+function projectType(r: Row): ProjectType {
+  return isProjectType(r.type) ? r.type : guessType(String(r.name), String(r.brief ?? ''))
+}
+
 function projectItem(r: Row): ProjectItem {
   return {
     id: Number(r.id),
     name: String(r.name),
     slot: r.slot == null ? null : Number(r.slot),
+    type: projectType(r),
     createdAt: String(r.created_at),
     lastUsedAt: (r.last_used_at as string) ?? null,
     notes: r.notes == null ? 0 : Number(r.notes),
@@ -461,12 +471,13 @@ function projectItem(r: Row): ProjectItem {
   }
 }
 
-export async function createProject(name: string): Promise<ProjectItem> {
+export async function createProject(name: string, type?: ProjectType): Promise<ProjectItem> {
   const id = run(
-    `insert into projects (local_key, name, slot, last_used_at) values (?, ?, ?, ${NOW})`,
+    `insert into projects (local_key, name, slot, type, last_used_at) values (?, ?, ?, ?, ${NOW})`,
     randomUUID(),
     name,
-    freeSlot(open())
+    freeSlot(open()),
+    type ?? null
   )
   return (await getProject(id)) as ProjectItem
 }
@@ -499,6 +510,10 @@ export async function touchProject(id: number): Promise<void> {
     `update projects set last_used_at = ${NOW}, upload_status = 'local', upload_error = null where id = ?`,
     id
   )
+}
+
+export function setProjectType(id: number, type: ProjectType): void {
+  run(`update projects set type = ? where id = ?`, type, id)
 }
 
 /** The project's brief and how many observed notes it was last written from. */
@@ -607,9 +622,9 @@ export async function closeSpan(sessionId: number): Promise<void> {
  */
 export async function sessionProjects(
   sessionId: number
-): Promise<{ id: number; name: string; ms: number; position: number }[]> {
+): Promise<{ id: number; name: string; type: ProjectType; ms: number; position: number }[]> {
   return all(
-    `select p.id, p.name, m.position,
+    `select p.id, p.name, p.type, p.brief, m.position,
             coalesce((select sum((julianday(coalesce(s.ended_at, strftime('%Y-%m-%dT%H:%M:%fZ', 'now')))
                                   - julianday(s.started_at)) * 86400000)
                       from project_spans s where s.session_id = m.session_id and s.project_id = p.id), 0) as ms
@@ -619,6 +634,7 @@ export async function sessionProjects(
   ).map((r) => ({
     id: Number(r.id),
     name: String(r.name),
+    type: projectType(r),
     ms: Math.round(Number(r.ms ?? 0)),
     position: Number(r.position)
   }))

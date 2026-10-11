@@ -217,3 +217,62 @@ test('switching project starts afresh: no ideas, held change or selection carry 
   core.onCapture(20, true)
   assert.equal(core.currentCaptureId, 20)
 })
+
+test('standing options show at once; the checked list replaces them, and a pick carries over', () => {
+  const { core } = setup()
+  core.onCapture(1, true)
+  core.setPanelOpen(true)
+  const [req] = core.requestNow()
+  assert.equal(req.type, 'requestSuggestions')
+  const gen = (req as { generationId: number }).generationId
+
+  const standing = { ...makeSet('standing', 1, gen), thinking: true }
+  assert.deepEqual(core.onDefaults(gen, standing), [{ type: 'publishSuggestions', set: standing }])
+  // Still being checked: asking again does not start a second request.
+  assert.deepEqual(core.requestNow(), [])
+  // A standing option can be picked before the check is back...
+  assert.equal(core.select(1, 'standing')[0].type, 'execute')
+  // ...and the checked list then takes its place without letting it be picked twice.
+  const checked = makeSet('checked', 1, gen)
+  assert.deepEqual(core.onSuggestions(gen, checked), [{ type: 'publishSuggestions', set: checked }])
+  assert.deepEqual(core.select(2, 'checked'), [{ type: 'rejectSelection', reason: 'duplicate' }])
+  // A key pressed against the list that was just replaced does nothing.
+  core.executionFinished()
+  assert.deepEqual(core.select(1, 'standing'), [{ type: 'rejectSelection', reason: 'stale' }])
+})
+
+test('standing options for another screen or request are dropped; a failed check keeps them', () => {
+  const { core } = setup()
+  core.onCapture(1, true)
+  core.setPanelOpen(true)
+  const gen = (core.requestNow()[0] as { generationId: number }).generationId
+  assert.deepEqual(core.onDefaults(gen + 1, { ...makeSet('late', 1, gen + 1), thinking: true }), [])
+  assert.deepEqual(core.onDefaults(gen, { ...makeSet('other', 2, gen), thinking: true }), [])
+
+  const standing = { ...makeSet('standing', 1, gen), thinking: true }
+  core.onDefaults(gen, standing)
+  const [kept] = core.onSuggestionsFailed(gen)
+  assert.equal(kept.type, 'publishSuggestions')
+  const set = (kept as { set: SuggestionSet }).set
+  assert.equal(set.id, 'standing')
+  assert.equal(set.thinking, false)
+  assert.equal(core.select(3, 'standing')[0].type, 'execute')
+})
+
+test('"All options" swaps the list for the same screen; a dimmed option cannot be picked', () => {
+  const { core } = setup()
+  core.onCapture(1, true)
+  core.setPanelOpen(true)
+  const gen = (core.requestNow()[0] as { generationId: number }).generationId
+  const short = makeSet('short', 1, gen)
+  core.onSuggestions(gen, short)
+
+  const all = { ...makeSet('all', 1, gen), all: true }
+  all.ideas[2] = { ...all.ideas[2], disabled: true }
+  assert.deepEqual(core.replace(all), [{ type: 'publishSuggestions', set: all }])
+  assert.deepEqual(core.select(3, 'all'), [{ type: 'rejectSelection', reason: 'no-such-key' }])
+  // Not for another screen, and not while one of the options is running.
+  assert.deepEqual(core.replace(makeSet('elsewhere', 2, gen)), [])
+  assert.equal(core.select(1, 'all')[0].type, 'execute')
+  assert.deepEqual(core.replace(short), [])
+})

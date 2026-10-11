@@ -34,5 +34,8 @@ if [ ! -f "$KEYCHAIN" ]; then
 fi
 
 security unlock-keychain -p "$PASS" "$KEYCHAIN"
+# A synced Desktop or Documents folder tags the bundle with Finder attributes, which
+# codesign refuses ("detritus not allowed"). Clear them right before signing.
+xattr -cr "$APP"
 codesign --force --deep --keychain "$KEYCHAIN" -s "$NAME" "$APP"
 codesign -d -r- "$APP" 2>&1 | grep designated

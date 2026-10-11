@@ -188,6 +188,26 @@ body,
   animation: klair-bob 3.2s steps(1) infinite;
 }
 
+/* Maths in answers (KaTeX): a touch smaller than its default, to sit with the text. */
+.katex {
+  font-size: 1.08em;
+}
+.katex-display {
+  margin: 0.35em 0;
+}
+
+/* A type icon's lighter pixels, while Klair checks which options fit the screen. */
+@keyframes klair-twinkle {
+  50% {
+    opacity: 0.35;
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .klair-twinkle {
+    animation: klair-twinkle 1.3s steps(3) infinite;
+  }
+}
+
 @keyframes klair-fill {
   0% {
     width: 8%;

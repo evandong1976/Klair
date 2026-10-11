@@ -1,13 +1,14 @@
 # Klair build progress
 
-## Handoff (updated 2026-10-10 23:55 ET, by Mac session · claude-opus-5-5)
-- **Milestone:** 8 (prove it) in progress on the Mac. Big model change today: **projects hold the context, sessions are only time**, and each project has its own Graphify graph shown in a new Knowledge graph pane.
-- **Just finished (`feature/graphiffy`, not merged):** Graphify fixed (it had never built a graph: the pipx install lacked the `openai` extra); projects + time-only sessions in SQLite and TigerData with migrations; per-project retrieval, indexing and upload; Start/Sessions/panel/popover changes; the Knowledge graph pane.
+## Handoff (updated 2026-10-11 08:10 ET, by Mac session · claude-opus-5-5)
+- **Milestone:** 8 (prove it) in progress on the Mac.
+- **Just finished (uncommitted on `main`):** project types (work, study, research) with a fixed menu of options each; the note call picks menu entries instead of writing ideas; three standing options shown at once, then the checked list; All options (⌘O); change type (⌘T, chip in the panel, chips in Start); "Do it for me" (opens one checked web page or app); pixel type icons. Also uncommitted: fn-click on a bulleted item shortens its whole list (`extension/condense.js`, `src/main/condense.ts`).
+- **Already merged to `main` today:** project brief + relevance judge, the ideas pill that hides itself, fn-click paragraph condense.
 - **In progress:** nothing half-done
-- **Next step:** on the Mac, with `pnpm dev`: start "ML", capture a few pages, ⌃⌥2 into another project, end the session, then open the Knowledge graph from the Sessions window (see README demo steps 10–12). Then merge `feature/graphiffy` into `main`.
+- **Next step:** on the Mac with `pnpm dev`: open the panel right after a screen change and watch the three standing tiles become the checked list; press ⌘O and ⌘T; in a work project, put a missing-API-key error on screen and pick "Do it for me". Then commit on a branch.
 - **Broken / failing:** nothing known. TigerData's port 31846 is blocked on some networks (projects then upload later).
 - **Decisions made this session:** see the Decisions log
-- **Blocked on / questions for the user:** no project rename yet (the migrated project is called "Session")
+- **Blocked on / questions for the user:** none
 - **How to verify current state:** `pnpm install && pnpm typecheck && pnpm lint && pnpm test && pnpm build`, then `pnpm dev`
 
 ---
@@ -72,3 +73,10 @@
 - 2026-10-10: the running `pnpm dev` restarted on the code change and migrated the real klair.db during the build (one project, "Session", 27 captures); checked: folder moved, paths rewritten, span created.
 - 2026-10-10: fix: databases migrated by the first projects build had `sessions`/`project_spans` without defaults (and status default 'ended'), so starting a session failed (NOT NULL started_at). Inserts now set started_at and status explicitly, the migration creates the tables with the same defaults as a new database, the migration test starts a session afterwards, and a new project whose session fails to start is removed instead of piling up (the user got three empty "SWE" projects).
 - 2026-10-10: sessions hold the projects pulled into them (user's pipeline): `session_projects` (session, project, position = fn N, backfilled from spans for older sessions). The Start window ticks projects for a new session (first ticked is active) or, while one runs, lists the session's projects and adds saved/new ones. fn/⌃⌥ N switches to the session's Nth project (projects' permanent slots are no longer used). Opening a span adds the project to the session. Deleting a session removes the session, its project list and spans; projects keep all their context (tested with the user's SWE+ML → SWE+OS example).
+- 2026-10-11: options are a fixed menu per project type, not text written per screen (user decision: model-written options "look and sound like slop"). Three types: work, study, research; `projects.type` (local only, null = guessed from name and brief by keywords). Menus in `src/shared/options.ts`; the first three of each are shown instantly and keep their ⌘ numbers.
+- 2026-10-11: the menu pick is made inside the note call (closed enum of ids per type, plus a short name of the thing on screen for some entries), not by a second model call: no added latency, and on 17 real screenshots the picks were sensible (note median 2.0 s, max 2.8 s). If picks turn out poor, move them to their own call on the answer model; `suggestionsFromNote` is the only consumer.
+- 2026-10-11: code checks after the pick: an explainer needs a drawable template, "Connect to earlier"/"Compare" need a named earlier topic that is in the project context and is not the topic on screen, "Do it for me" needs an https address or app name that the screen text names (`src/shared/open.ts`). Something to draw or to open counts as the pick itself.
+- 2026-10-11: with nothing picked (or a failed note) the three standing options are offered. A key pressed against a list that has just been replaced is dropped (`pickKey(key, setId)`).
+- 2026-10-11: changing the type mid-session resets the screen context and re-captures (`loop.refresh()`), so the current screen is noted again against the new menu; it also clears a pinned selection.
+- 2026-10-11: "Do it for me" is recorded nowhere (no action row): it opens the target, closes the panel and shows an "Opened …" pill. A computer-use agent is not built.
+- 2026-10-11: "transfer of knowledge between text" (research) is read as "Carry it over": while writing, what from earlier sources belongs here; while reading, what to take into the notes. To confirm with the user.

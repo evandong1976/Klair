@@ -1,69 +1,73 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import type { AnswerBlock, QuizBlock, SliderPlotBlock } from '../../../shared/blocks'
+import { mdBlocks, type Inline } from '../../../shared/markdown'
 import { isMod } from '../lib/useKlair'
 import { Button, Key } from './ui'
 import { Explorable } from './Explorable'
 
 // Renderers for the whitelisted answer blocks (src/shared/blocks.ts). Model output is
-// rendered as React text only: no HTML injection, no code execution.
+// rendered as React text only: no HTML injection, no code execution. The one exception
+// is maths: KaTeX parses the LaTeX itself and returns MathML markup, with `trust` off
+// (no links, images or raw HTML can come through it).
 
-function inline(text: string): ReactNode[] {
-  const out: ReactNode[] = []
-  const re = /(\*\*[^*]+\*\*|`[^`]+`|\*[^*]+\*)/g
-  let last = 0
-  let m: RegExpExecArray | null
-  let i = 0
-  while ((m = re.exec(text))) {
-    if (m.index > last) out.push(text.slice(last, m.index))
-    const tok = m[0]
-    if (tok.startsWith('**')) out.push(<strong key={i++}>{tok.slice(2, -2)}</strong>)
-    else if (tok.startsWith('`'))
-      out.push(
-        <code key={i++} className="font-mono text-[12.5px] text-ink">
-          {tok.slice(1, -1)}
-        </code>
-      )
-    else out.push(<em key={i++}>{tok.slice(1, -1)}</em>)
-    last = m.index + tok.length
-  }
-  if (last < text.length) out.push(text.slice(last))
-  return out
+/**
+ * LaTeX drawn as MathML, which Chromium lays out itself with the system's maths font, so
+ * there is no stylesheet or font to ship. A formula KaTeX can't parse shows its source.
+ */
+function Tex({ tex, display }: { tex: string; display: boolean }): React.JSX.Element {
+  // Until KaTeX is installed the source is shown as written.
+  return <span className={display ? 'block my-1.5 text-center font-mono' : 'font-mono'}>{tex}</span>
+}
+
+function inline(tokens: Inline[]): ReactNode[] {
+  return tokens.map((t, i) =>
+    t.type === 'text' ? (
+      t.text
+    ) : t.type === 'math' ? (
+      <Tex key={i} tex={t.tex} display={t.display} />
+    ) : t.type === 'strong' ? (
+      <strong key={i}>{t.text}</strong>
+    ) : t.type === 'code' ? (
+      <code key={i} className="font-mono text-[12.5px] text-ink">
+        {t.text}
+      </code>
+    ) : (
+      <em key={i}>{t.text}</em>
+    )
+  )
 }
 
 export function Markdown({ text }: { text: string }): React.JSX.Element {
-  const paras = text.trim().split(/\n{2,}/)
+  const blocks = useMemo(() => mdBlocks(text), [text])
   return (
     <div className="flex flex-col gap-2.5 text-[14.5px] leading-[1.55] text-ink-2">
-      {paras.map((p, i) => {
-        const lines = p.split('\n')
-        if (lines.every((l) => /^\s*[-*]\s+/.test(l)))
-          return (
-            <ul key={i} className="m-0 pl-5 list-disc flex flex-col gap-1.5">
-              {lines.map((l, j) => (
-                <li key={j}>{inline(l.replace(/^\s*[-*]\s+/, ''))}</li>
-              ))}
-            </ul>
-          )
-        if (lines.every((l) => /^\s*\d+[.)]\s+/.test(l)))
-          return (
-            <ol key={i} className="m-0 pl-5 list-decimal flex flex-col gap-1.5">
-              {lines.map((l, j) => (
-                <li key={j}>{inline(l.replace(/^\s*\d+[.)]\s+/, ''))}</li>
-              ))}
-            </ol>
-          )
-        if (/^#{1,4}\s/.test(p))
-          return (
-            <h3 key={i} className="m-0 text-[15px] font-extrabold text-ink">
-              {inline(p.replace(/^#{1,4}\s/, ''))}
-            </h3>
-          )
-        return (
+      {blocks.map((b, i) =>
+        b.type === 'ul' ? (
+          <ul key={i} className="m-0 pl-5 list-disc flex flex-col gap-1.5">
+            {b.items.map((item, j) => (
+              <li key={j} className={b.nested[j] ? 'ml-5 list-[circle]' : undefined}>
+                {inline(item)}
+              </li>
+            ))}
+          </ul>
+        ) : b.type === 'ol' ? (
+          <ol key={i} start={b.start} className="m-0 pl-5 list-decimal flex flex-col gap-1.5">
+            {b.items.map((item, j) => (
+              <li key={j}>{inline(item)}</li>
+            ))}
+          </ol>
+        ) : b.type === 'h' ? (
+          <h3 key={i} className="m-0 text-[15px] font-extrabold text-ink">
+            {inline(b.inline)}
+          </h3>
+        ) : b.type === 'code' ? (
+          <CodeBlock key={i} language={b.language} source={b.source} />
+        ) : (
           <p key={i} className="m-0 text-pretty">
-            {inline(p.replace(/\n/g, ' '))}
+            {inline(b.inline)}
           </p>
         )
-      })}
+      )}
     </div>
   )
 }
@@ -89,7 +93,10 @@ export function CodeBlock({
       <div className="relative">
         <pre
           aria-label={`${language} code`}
-          className="m-0 py-3 px-4 rounded-[16px] bg-code border border-code-line font-mono text-[12.5px] leading-[1.65] text-ink whitespace-pre overflow-x-auto max-h-[260px]"
+          // Prose in a fence (a drafted reply, a prompt to paste) wraps; code keeps its lines.
+          className={`m-0 py-3 pl-4 pr-[84px] rounded-[16px] bg-code border border-code-line font-mono text-[12.5px] leading-[1.65] text-ink overflow-auto max-h-[260px] ${
+            /^(text|markdown|md)$/.test(language) ? 'whitespace-pre-wrap' : 'whitespace-pre'
+          }`}
         >
           {source}
         </pre>

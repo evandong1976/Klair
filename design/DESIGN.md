@@ -144,6 +144,29 @@ The flower is the product's identity and its status light.
 
 ---
 
+### Project types (added 2026-10-11)
+
+Each project is Work, Study or Research. The type has a pixel icon in the flower's style and a flower palette, both in `src/shared/options.ts`:
+
+| Type | Icon (11 × 11 sprite) | Palette |
+|---|---|---|
+| Work | briefcase | Bluebell blues |
+| Study | open book | Buttercup yellows |
+| Research | magnifying glass | Violet |
+
+- Sprites use four shades of the palette (centre, inner, crease, outer petal). They are drawn as crisp SVG squares (`components/TypeIcon.tsx`), 14px in the panel chip, 16px in the picker chips, 20px on Start rows.
+- **Type chip** (panel, beside the project chip): 28px pill, palette's palest tint as fill and its crease shade as border, icon + label + `⌘T` keycap. Click or ⌘T steps to the next type.
+- **Dynamic:** while Klair is checking which options fit the screen, the icon's two lighter shades twinkle (opacity steps, staggered across the pixels). Still when `prefers-reduced-motion` is set.
+- **Picker** (Start window, under the new-project name): three pills; the selected one is filled with its palette, the others are white. Preselected from the name as it is typed.
+- The rest of the panel keeps the blush and sage scheme whatever the type.
+
+### Option tiles as they load (added 2026-10-11)
+
+- The type's three standing options are drawn the moment the panel opens. Before the first screen of a session has been read they are dimmed (55%) and don't respond; once a screen is captured they are live while its note is still being written.
+- When the checked list arrives, tiles are matched by option, not by position: one that is still offered stays where it is, new ones fade in from 6px below (220ms), dropped ones fade out. The header above them changes from "Reading your screen…" to the topic.
+- **All options** is a small text button under the tiles, right-aligned, with a `⌘O` keycap; in the full list it reads "Only what fits this screen". A dimmed tile (55%, no hover) says why it can't run as its second line.
+- "Do it for me" has its own preview (an arrow leaving a window) and, after it runs, the flower shows an "Opened …" pill for 2.5s.
+
 ## 4. Keyboard map
 
 Keyboard-first: every action shows its shortcut on the control itself, and the open panel has a hint strip (`⌘1–9 pick · ⌘↑↓ move · ⌘/ all keys · esc close`).
@@ -158,7 +181,9 @@ Keyboard-first: every action shows its shortcut on the control itself, and the o
 | Anywhere | `fn 1`–`fn 9` (or `⌃⌥1`–`⌃⌥9`) | Switch to the session in that slot; the running one is ended and saved first |
 | Start window | `1`–`9` · `⌘N` | Continue that session · new session |
 | Anywhere (fallback) | `⌃⌥K` | Replaces fn if macOS is using fn for input switching/dictation |
-| Klair open | `⌘1`–`⌘9` | Pick an idea (three about the screen, up to three more that build on the session) |
+| Klair open | `⌘1`–`⌘9` | Pick an idea (from the fixed menu of the project's type; the three standing ones are always first) |
+| Klair open | `⌘O` | All options: the type's whole menu, with what can't run here dimmed; again for only what fits |
+| Klair open | `⌘T` | Change the project's type: Work → Study → Research |
 | Klair open | `⌘↑` `⌘↓` | Move between ideas |
 | Klair open | `⌘K` | Focus "Ask for something else" |
 | Klair open | `⌘S` | Select an area: drag out a rectangle (esc cancels); it's captured and pinned as the context until "Use whole screen" |
@@ -207,7 +232,7 @@ The first malleable answer that is built end to end. When a screen has a concept
 
 - Plain language; no architecture words in the UI (no "Graphify", "index", "tokens").
 - Be honest about scope: "Summary of what's been captured", "Earlier tabs couldn't be loaded, so this answer uses only what's on screen now."
-- Ideas are short verbs with a one-line expectation: "Play with gradient descent — A small live demo plus the code behind it."
+- Ideas come from a fixed menu per project type (`src/shared/options.ts`): a short verb title ("Explain this", "Summarize this", "Do it for me") and one second line. The second line is the menu's own, or the name of the thing on screen when the model gave one ("Gradient descent", "Commit message"). No option text is written per screen by a model; that read as filler (changed 2026-10-11).
 - Transmission is stated where it matters: "To make ideas and answers, Klair sends the relevant screenshots and notes to Claude."
 - `States.dc.html` has the approved copy for: working (with cancel), no earlier context, request failed, fn busy, screen access needed, not saving, partial page, paused, stale ideas.
 - Placeholders still open: `[RETENTION]` (how long sessions are kept).

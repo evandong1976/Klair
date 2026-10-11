@@ -23,10 +23,16 @@ export async function* condense(
   signal: AbortSignal
 ): AsyncGenerator<string> {
   const t = Date.now()
+  // A click on a bulleted item sends its whole list, one item per line (condense.js).
+  // Terse bullets barely shrink unless the model is given a length to hit.
+  const items = input.text.split('\n').filter((l) => l.trim()).length
   const prompt = [
     input.title ? `Page: ${input.title.slice(0, 200)}` : '',
     projectContext ? fenceUntrusted('working-on', projectContext.slice(0, 2400)) : '',
     fenceUntrusted('clicked-paragraph', input.text),
+    items >= 3 && !input.again
+      ? `This is a bulleted list of ${items} items. Do not go through it item by item: say what the list adds up to in one sentence, two at most, in under ${Math.max(100, Math.round(input.text.length * 0.4))} characters.`
+      : '',
     input.again
       ? 'This text is already a shortened version and the reader clicked it again because it is still too long. Cut it to about half its length: one sentence if it can carry the point, never more than two. Keep only the single most important point.'
       : ''

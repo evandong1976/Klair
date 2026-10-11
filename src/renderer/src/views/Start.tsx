@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { guessType, type ProjectType } from '../../../shared/options'
 import type { HealthReport, ProjectItem } from '../../../shared/types'
 import { Flower } from '../components/Flower'
+import { TypeChips, TypeIcon } from '../components/TypeIcon'
 import { Button, Key, PixelLabel } from '../components/ui'
 import { isMod, klair, useKlairState } from '../lib/useKlair'
 import { HealthRow } from './HealthRow'
@@ -38,6 +40,10 @@ export function StartWindow(): React.JSX.Element {
   // Ticked for the new session, in the order ticked (= fn 1, fn 2, …).
   const [picked, setPicked] = useState<number[]>([])
   const [name, setName] = useState('')
+  // The kind of project being created: guessed from its name as it is typed, until the
+  // user picks one themselves.
+  const [chosenType, setChosenType] = useState<ProjectType | null>(null)
+  const newType = chosenType ?? guessType(name)
   const nameRef = useRef<HTMLInputElement>(null)
   const running = !!state?.session
   const inSession = new Set((state?.sessionProjects ?? []).map((p) => p.id))
@@ -91,8 +97,9 @@ export function StartWindow(): React.JSX.Element {
   const create = async (): Promise<void> => {
     const n = name.trim()
     if (!n) return
-    const p = await klair.createProject(n)
+    const p = await klair.createProject(n, newType)
     setName('')
+    setChosenType(null)
     if (running) await klair.addToSession(p.id)
     else setPicked((cur) => [...cur, p.id])
     await loadProjects()
@@ -143,23 +150,26 @@ export function StartWindow(): React.JSX.Element {
   const others = (projects ?? []).filter((p) => !inSession.has(p.id))
 
   const newProject = (
-    <div className="flex gap-2">
-      <input
-        ref={nameRef}
-        aria-label="New project name"
-        value={name}
-        placeholder={running ? 'New project for this session, e.g. OS' : 'New project, e.g. OS'}
-        onChange={(e) => setName(e.target.value)}
-        className="flex-1 h-11 box-border px-3.5 rounded-[12px] border border-line-input bg-white text-[15px] font-medium text-ink outline-none"
-      />
-      <Button
-        onClick={() => void create()}
-        disabled={!name.trim()}
-        keyHint="↵"
-        className="h-11 text-[14px]"
-      >
-        Add
-      </Button>
+    <div className="flex flex-col gap-2">
+      <div className="flex gap-2">
+        <input
+          ref={nameRef}
+          aria-label="New project name"
+          value={name}
+          placeholder={running ? 'New project for this session, e.g. OS' : 'New project, e.g. OS'}
+          onChange={(e) => setName(e.target.value)}
+          className="flex-1 h-11 box-border px-3.5 rounded-[12px] border border-line-input bg-white text-[15px] font-medium text-ink outline-none"
+        />
+        <Button
+          onClick={() => void create()}
+          disabled={!name.trim()}
+          keyHint="↵"
+          className="h-11 text-[14px]"
+        >
+          Add
+        </Button>
+      </div>
+      <TypeChips value={newType} onChange={setChosenType} />
     </div>
   )
 
@@ -200,6 +210,7 @@ export function StartWindow(): React.JSX.Element {
                       {active ? 'Active: context goes here' : item ? notesLabel(item) : ''}
                     </span>
                   </span>
+                  <TypeIcon type={p.type} size={20} />
                 </button>
               )
             })}
@@ -218,6 +229,7 @@ export function StartWindow(): React.JSX.Element {
                   <span className="text-[15px] font-bold truncate">{p.name}</span>
                   <span className="text-[12.5px] text-muted">{notesLabel(p)}</span>
                 </span>
+                <TypeIcon type={p.type} size={20} />
               </button>
             ))}
             {newProject}
@@ -250,6 +262,7 @@ export function StartWindow(): React.JSX.Element {
                       {notesLabel(p)}
                     </span>
                   </span>
+                  <TypeIcon type={p.type} size={20} />
                 </button>
               )
             })}
