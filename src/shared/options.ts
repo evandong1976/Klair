@@ -146,10 +146,11 @@ export const MENUS: Record<ProjectType, MenuOption[]> = {
     {
       id: 'quiz',
       title: 'Test me',
-      line: 'Three questions on this, answers below',
+      line: 'A short quiz on this, scored at the end',
       kind: 'quiz',
       when: 'Always, when the screen has material that can be recalled or applied: definitions, facts, methods, results.',
-      task: 'Write three questions that test understanding of what is on screen, going from recall to applying it. Number them. Then a line with only the word "Answers", and the three answers, each in a sentence or two.',
+      // Picking it opens a quiz taken in the panel (main/quiz.ts), not a written answer.
+      task: 'Quiz the user on what is on screen, and on the rest of the page when its text is given.',
       top: true
     },
     playWithIt,

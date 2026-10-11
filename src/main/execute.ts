@@ -10,9 +10,10 @@ import type { Retrieved } from './retrieve'
 // suggestion came from. Streams the answer to the panel as one markdown text block;
 // cancellation aborts the request, and the caller suppresses any late events.
 //
-// Text only for now: the code, slider-plot and quiz blocks in shared/blocks.ts are
-// parked. Asking the model for them as structured output also failed outright, since
-// the block union becomes a JSON-schema `oneOf`, which Anthropic models reject.
+// Text only here. The quiz ("Test me") is built by quiz.ts and the interactive explainer
+// by explore.ts, each with its own single-schema call. The code and slider-plot blocks
+// in shared/blocks.ts are parked: asking for the whole block union as structured output
+// failed outright, since it becomes a JSON-schema `oneOf`, which Anthropic models reject.
 
 const SYSTEM = `You are Klair. The user picked a piece of help while working; it appears in a small panel beside their work, so they never leave the page.
 Answer in short, plain markdown: a few tight paragraphs or bullets, under about 180 words. Start with the answer itself, with no preamble and no title.
@@ -168,8 +169,15 @@ export function answerToText(a: AnswerOutput): string {
     if (b.type === 'text') parts.push(b.markdown)
     else if (b.type === 'code') parts.push('```' + b.language + '\n' + b.source + '\n```')
     else if (b.type === 'steps') parts.push(b.items.map((s, i) => `${i + 1}. ${s}`).join('\n'))
-    else if (b.type === 'quiz') parts.push(b.questions.map((q) => `Q: ${q.prompt}`).join('\n'))
-    else if (b.type === 'slider-plot') parts.push(`Interactive demo: ${b.title} (${b.param.label})`)
+    else if (b.type === 'quiz') {
+      // The questions with their answers, so later answers can build on what was tested.
+      parts.push(
+        b.questions
+          .map((q) => `Q: ${q.prompt}\nA: ${q.options[q.correctIndex]}. ${q.explanation}`)
+          .join('\n\n')
+      )
+    } else if (b.type === 'slider-plot')
+      parts.push(`Interactive demo: ${b.title} (${b.param.label})`)
     else if (b.type === 'explorable') {
       // What the user was shown, in words, so later answers can build on it.
       parts.push(

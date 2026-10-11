@@ -150,6 +150,8 @@ A project is one of three types. The type decides which options the panel offers
 | Draft it               | Key terms           | Play with it                |
 | Write a project prompt |                     |                             |
 
+**Test me** is a quiz taken in the panel: five multiple-choice questions, one at a time, each showing the right answer and why once you pick, then your score and every answer (`src/main/quiz.ts`).
+
 ★ marks the three standing options: shown the moment the panel opens, before the screen has been checked, and always first so their ⌘ numbers stay put.
 
 - **How the list is chosen:** the note call that reads each new screen (`src/main/notes.ts`) is given the type's menu and returns the ids that fit, picked from a closed list. For some entries it also names the thing on screen (a concept, an error, an earlier topic), which becomes the tile's second line. `src/main/suggest.ts` then drops any pick that can't be honoured: **Play with it** needs something an explainer can draw, **Connect to earlier** and **Compare** need an earlier topic that is really in the project (and is not the topic on screen), **Do it for me** needs a checked target.

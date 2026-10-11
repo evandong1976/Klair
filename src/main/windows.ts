@@ -46,11 +46,32 @@ function webPreferences(): Electron.WebPreferences {
 }
 
 function load(win: BrowserWindow, route: string): void {
-  if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
-    void win.loadURL(`${process.env['ELECTRON_RENDERER_URL']}#/${route}`)
-  } else {
-    void win.loadFile(join(__dirname, '../renderer/index.html'), { hash: `/${route}` })
+  const go = (): void => {
+    if (win.isDestroyed()) return
+    if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
+      void win.loadURL(`${process.env['ELECTRON_RENDERER_URL']}#/${route}`).catch(() => {})
+    } else {
+      void win
+        .loadFile(join(__dirname, '../renderer/index.html'), { hash: `/${route}` })
+        .catch(() => {})
+    }
   }
+  // A window whose page didn't load (in development, the dev server not answering yet)
+  // or whose page process died would otherwise stay white for good. Try again.
+  // ponytail: retries every half second for as long as the load fails. Right for a dev
+  // server that is restarting; a packaged app loads from disk, which doesn't fail.
+  let fails = 0
+  win.webContents.on('did-fail-load', (_e, code, why, _url, isMainFrame) => {
+    // -3 is "aborted": a newer load of the same window replaced this one.
+    if (!isMainFrame || code === -3) return
+    if (fails++ < 3) console.warn(`window "${route}" failed to load (${why}); trying again`)
+    setTimeout(go, 500)
+  })
+  win.webContents.on('render-process-gone', (_e, details) => {
+    console.warn(`window "${route}" lost its page process (${details.reason}); reloading`)
+    if (details.reason !== 'clean-exit') setTimeout(go, 200)
+  })
+  go()
   win.webContents.setWindowOpenHandler((d) => {
     void shell.openExternal(d.url)
     return { action: 'deny' }

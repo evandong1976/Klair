@@ -1,6 +1,6 @@
 import './assets/main.css'
 
-import { StrictMode } from 'react'
+import { Component, StrictMode, type ReactNode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { MotionConfig } from 'motion/react'
 import { FlowerWindow } from './views/FlowerWindow'
@@ -43,10 +43,43 @@ document.addEventListener(
   { capture: true, passive: true }
 )
 
+/**
+ * If something throws while a window is being drawn, React removes everything in it and
+ * the window is left blank. This says what happened instead, with a way back.
+ */
+class Recover extends Component<{ children: ReactNode }, { error: Error | null }> {
+  state = { error: null as Error | null }
+  static getDerivedStateFromError(error: Error): { error: Error } {
+    return { error }
+  }
+  componentDidCatch(error: Error): void {
+    console.error(`Klair window "${route}" failed to draw:`, error)
+  }
+  render(): ReactNode {
+    const { error } = this.state
+    if (!error) return this.props.children
+    return (
+      <div className="m-2 p-4 rounded-[16px] bg-white border border-danger-line flex flex-col gap-2 text-ink">
+        <strong className="text-[15px]">Klair couldn&apos;t draw this window</strong>
+        <span className="text-[13px] text-ink-2 break-words">{error.message}</span>
+        <button
+          type="button"
+          onClick={() => window.location.reload()}
+          className="self-start h-9 px-3 rounded-[12px] bg-ink text-on-dark text-[13px] font-bold cursor-pointer"
+        >
+          Reload
+        </button>
+      </div>
+    )
+  }
+}
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <MotionConfig reducedMotion="user">
-      <View />
+      <Recover>
+        <View />
+      </Recover>
     </MotionConfig>
   </StrictMode>
 )

@@ -214,6 +214,16 @@ Answers are **composed UI**, not just text: the panel morphs to fit the task. Th
 
 Proposed (not settled) build approach: the assistance request returns structured blocks validated against a schema — e.g. `text`, `code`, `slider-plot`, `quiz`, `steps` — plus up to three reshape suggestions. The renderer maps each block type to a fixed React component. Never execute model-generated JS; interactive blocks use an audited, whitelisted set.
 
+### Quiz (built 2026-10-11)
+
+"Test me" (study projects) opens a quiz in the panel (`Quiz.dc.html`; `Quiz` in `components/blocks.tsx`; panel 490px wide):
+
+- **One question at a time:** a progress strip (one segment per question), "Question 2 of 5", the question, and four options with `⌘1–4` keycaps.
+- **A pick is final.** It shows at once which option was right (sage border, "Correct answer") and which was picked if wrong (blush, "Your pick"), with a white card saying "Right." or "Not quite." and why. The other options fade to 60%. `⌘↵` goes on ("Next question", then "See your score"); it is disabled until an option is picked.
+- **Score page:** "Your score", "3 of 5" at 28px, one line on how many to look at again, and **Try again** (`⌘R`) beside it. Below, every question with a ✓ or ✕ dot, what was picked (rose, only if wrong), the answer (sage) and why. The strip turns sage or rose per question.
+- **Who decides what:** the model writes each question with one right answer, three wrong ones and a reason (`src/main/quiz.ts`), in plain labelled lines. Klair shuffles the options and keeps track of the right one, so the marked answer can never be the wrong index. Maths in questions and options is drawn as in answers.
+- No reshape chips or box under a quiz.
+
 ### Interactive explainers (built 2026-10-11)
 
 The first malleable answer that is built end to end. When a screen has a concept that is better understood by playing with it, the ideas gain one more tile ("Play with the learning rate"), and picking it opens an explainer in the panel.

@@ -720,7 +720,8 @@ function AnswerView({
         </div>
       ) : null}
 
-      {answer.status === 'complete' ? (
+      {/* A quiz is taken, not reshaped: its own buttons are all it needs. */}
+      {answer.status === 'complete' && !isQuizOnly(answer) ? (
         <div className="flex flex-col gap-2.5">
           {answer.reshape.length ? (
             <div className="flex flex-wrap gap-1.5">
