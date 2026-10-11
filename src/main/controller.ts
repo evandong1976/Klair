@@ -20,6 +20,7 @@ import type {
 import { createHash, randomUUID } from 'crypto'
 import { cache } from './cache'
 import { captureArea, CaptureLoop, type Frame } from './capture'
+import { buildExplorable } from './explore'
 import { belongsInProject, changeJudgeEnabled, judgeScreen, thumbnail } from './judge'
 import { config } from './config'
 import { ControllerCore, type Effect } from './controller-core'
@@ -1233,20 +1234,32 @@ async function execute(run: {
 
   try {
     const img = await captureImage(run.captureId)
-    const file = sid ? await recentFile(sid) : null
-    const retrieved = sid
-      ? await retrieve(`${img.topic} ${run.task}`.slice(0, 300), {
-          projectId: sid,
-          excludeCaptureId: run.captureId
-        })
-      : {
+    // An interactive explainer is built from the screen's own note; it needs no
+    // history lookup, which keeps it quick.
+    const interactive = run.idea?.interactive ?? null
+    const file = sid && !interactive ? await recentFile(sid) : null
+    const retrieved = interactive
+      ? {
           text: '',
           sources: [],
-          graphOk: false,
-          searchOk: false,
-          historyUnavailable: true,
+          graphOk: true,
+          searchOk: true,
+          historyUnavailable: false,
           chars: 0
         }
+      : sid
+        ? await retrieve(`${img.topic} ${run.task}`.slice(0, 300), {
+            projectId: sid,
+            excludeCaptureId: run.captureId
+          })
+        : {
+            text: '',
+            sources: [],
+            graphOk: false,
+            searchOk: false,
+            historyUnavailable: true,
+            chars: 0
+          }
     if (!live()) return
     const screenSources = run.set?.sources.filter((s) => s.kind === 'screen') ?? []
     if (img.selection && !screenSources.length) {
@@ -1272,39 +1285,48 @@ async function execute(run: {
     })
     if (retrieved.historyUnavailable) notice({ kind: 'no-history' })
 
-    const result = await runAssistance({
-      projectId: sid ?? 0,
-      task: run.task,
-      kind: run.kind,
-      title: base.title,
-      // The note already describes the screen; attaching the image as well delays the
-      // first word by several seconds, so it is only sent when there is no note, or when
-      // the user selected the area themselves (they want what's in it looked at).
-      png: img.selection || !img.note ? img.png : null,
-      selection: img.selection,
-      note: img.note,
-      topic: img.topic,
-      page: img.page,
-      file,
-      retrieved,
-      previous: run.previous ?? null,
-      signal: abort.signal,
-      onPartial: (p) => {
-        if (!live()) return
-        const cur = getState().answer
-        if (!cur) return
-        setState({
-          answer: {
-            ...cur,
-            status: 'streaming',
-            title: p.title || cur.title,
-            basedOn: p.basedOn || cur.basedOn,
-            blocks: p.blocks.length ? p.blocks : cur.blocks,
-            reshape: p.reshape.length ? p.reshape : cur.reshape
+    const result = interactive
+      ? await buildExplorable({
+          projectId: sid ?? 0,
+          template: interactive.template,
+          concept: interactive.concept,
+          topic: img.topic,
+          note: img.note,
+          signal: abort.signal
+        })
+      : await runAssistance({
+          projectId: sid ?? 0,
+          task: run.task,
+          kind: run.kind,
+          title: base.title,
+          // The note already describes the screen; attaching the image as well delays the
+          // first word by several seconds, so it is only sent when there is no note, or when
+          // the user selected the area themselves (they want what's in it looked at).
+          png: img.selection || !img.note ? img.png : null,
+          selection: img.selection,
+          note: img.note,
+          topic: img.topic,
+          page: img.page,
+          file,
+          retrieved,
+          previous: run.previous ?? null,
+          signal: abort.signal,
+          onPartial: (p) => {
+            if (!live()) return
+            const cur = getState().answer
+            if (!cur) return
+            setState({
+              answer: {
+                ...cur,
+                status: 'streaming',
+                title: p.title || cur.title,
+                basedOn: p.basedOn || cur.basedOn,
+                blocks: p.blocks.length ? p.blocks : cur.blocks,
+                reshape: p.reshape.length ? p.reshape : cur.reshape
+              }
+            })
           }
         })
-      }
-    })
     actionId = await actionSaved
     if (!live()) return
     lastOutput = result.output

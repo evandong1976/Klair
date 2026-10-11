@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import type { AnswerBlock, QuizBlock, SliderPlotBlock } from '../../../shared/blocks'
 import { isMod } from '../lib/useKlair'
 import { Button, Key } from './ui'
+import { Explorable } from './Explorable'
 
 // Renderers for the whitelisted answer blocks (src/shared/blocks.ts). Model output is
 // rendered as React text only: no HTML injection, no code execution.
@@ -347,6 +348,8 @@ export function Block({ block }: { block: AnswerBlock }): React.JSX.Element | nu
       return <CodeBlock language={block.language} source={block.source} caption={block.caption} />
     case 'slider-plot':
       return <SliderPlot block={block} />
+    case 'explorable':
+      return <Explorable spec={block.spec} />
     case 'quiz':
       return <Quiz block={block} />
     case 'steps':

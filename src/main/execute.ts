@@ -160,6 +160,14 @@ export function answerToText(a: AnswerOutput): string {
     else if (b.type === 'steps') parts.push(b.items.map((s, i) => `${i + 1}. ${s}`).join('\n'))
     else if (b.type === 'quiz') parts.push(b.questions.map((q) => `Q: ${q.prompt}`).join('\n'))
     else if (b.type === 'slider-plot') parts.push(`Interactive demo: ${b.title} (${b.param.label})`)
+    else if (b.type === 'explorable') {
+      // What the user was shown, in words, so later answers can build on it.
+      parts.push(
+        `Interactive explainer with sliders for ${b.spec.controls.map((c) => c.label).join(', ')}.`,
+        b.spec.intro,
+        ...b.spec.captions.map((c) => c.text)
+      )
+    }
   }
   return parts.join('\n\n')
 }

@@ -23,6 +23,10 @@ import { baselineMode, recordMetric } from './metrics'
 //    index and Graphify notes). Deliberately loose: only a clearly unrelated screen is
 //    left out, so a glance at messages doesn't end up in an "ML" project.
 //
+// (Whether to offer an interactive explainer was asked here too, briefly. It moved into
+// the note call in notes.ts: asked here, after the note, the tile arrived seconds after
+// the other ideas.)
+//
 // A slow or failed call falls back to the permissive answer (changed, useful, belongs), so the
 // worst case is the behaviour without a judge, never a stuck screen or lost context.
 

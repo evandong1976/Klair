@@ -269,6 +269,34 @@ function BackdropFlower(): React.JSX.Element {
 }
 
 function TilePreview({ kind }: { kind: string }): React.JSX.Element {
+  // Something to play with: a curve and a slider.
+  if (kind === 'interactive')
+    return (
+      <span
+        aria-hidden="true"
+        className="flex-none w-14 h-10 rounded-[8px] bg-ground relative overflow-hidden"
+      >
+        <svg viewBox="0 0 56 40" className="absolute inset-0">
+          <path
+            d="M6 10 C 18 30, 30 30, 50 8"
+            fill="none"
+            stroke="#ee8378"
+            strokeWidth="2.2"
+            strokeLinecap="round"
+          />
+          <line
+            x1="8"
+            x2="48"
+            y1="32"
+            y2="32"
+            stroke="#c9d1b6"
+            strokeWidth="2"
+            strokeLinecap="round"
+          />
+          <circle cx="30" cy="32" r="3.5" fill="#56623f" />
+        </svg>
+      </span>
+    )
   if (kind === 'quiz')
     return (
       <span
@@ -531,7 +559,9 @@ function AnswerView({
               ? 'Writing your quiz…'
               : answer.kind === 'code'
                 ? 'Building a live demo…'
-                : 'Working on it…'}
+                : answer.kind === 'interactive'
+                  ? 'Building something you can play with…'
+                  : 'Working on it…'}
           </AnimatedShinyText>
           <PixelProgress />
           <div className="flex justify-end">

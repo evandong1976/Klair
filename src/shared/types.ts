@@ -1,4 +1,4 @@
-import type { AnswerBlock } from './blocks'
+import type { AnswerBlock, ExplorableTemplate } from './blocks'
 import type { FlowerStyleId } from './flower'
 
 export type ObservingState = 'off' | 'on' | 'paused'
@@ -16,8 +16,10 @@ export interface Idea {
   key: number // 1–9 → ⌘1–9
   title: string
   subtitle: string
-  kind: 'summary' | 'code' | 'quiz' | 'explain' | 'other'
+  kind: 'summary' | 'code' | 'quiz' | 'explain' | 'other' | 'interactive'
   prompt: string
+  /** Set on an 'interactive' idea: which explainer to build if it is picked. */
+  interactive?: { template: ExplorableTemplate; concept: string }
 }
 
 export interface SuggestionSet {
