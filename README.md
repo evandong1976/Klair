@@ -80,7 +80,7 @@ pnpm dev
    ```
    Already installed without `[openai]`? Run `pipx inject graphifyy openai`. Without it every graph comes out empty; the Start window's Graphify row says so.
    Klair finds `graphify` in `~/.local/bin`, `/opt/homebrew/bin` or your shell's PATH by itself. Set `GRAPHIFY_BIN` only if it's somewhere else. Without Graphify, answers still use the project's notes and the current screen.
-4. **fn key (optional):** `pnpm build:native` builds `native/fn-key` against Electron; then allow Input Monitoring. Until then, use ⌃⌥K / ⌃⌥P / ⌃⌥Q / ⌃⌥1–9. Rebuild it after pulling changes to `native/fn-key` (fn 1–9 needs the current build).
+4. **fn key (optional):** `pnpm build:native` builds `native/fn-key` against Electron; then allow Input Monitoring. Until then, use ⌃⌥K / ⌃⌥P / ⌃⌥Q / ⌃⌥H / ⌃⌥1–9. Rebuild it after pulling changes to `native/fn-key` (fn 1–9 and fn H need the current build).
 5. **Chrome extension (optional):** `chrome://extensions` › **Developer mode** › **Load unpacked** › the repo's `extension/` folder. See [Chrome extension](#chrome-extension).
 6. **Tiger MCP for builders (optional):** `tiger mcp install claude-code` lets Claude Code inspect the schema and test queries.
 
@@ -109,6 +109,7 @@ Only the fn family is global; ⌘ keys work only while the panel is open. The fu
 | Where            | Keys                                        | Action                                                                                     |
 | ---------------- | ------------------------------------------- | ------------------------------------------------------------------------------------------ |
 | Anywhere         | `fn` / `⌃⌥K` (changeable in the popover)    | Open or close Klair                                                                        |
+| Anywhere         | `fn H` / `⌃⌥H`                              | Hide the open panel and bring it back as it was (same ideas or answer, nothing refreshed)  |
 | Anywhere         | `fn P` / `⌃⌥P` · `fn Q` / `⌃⌥Q`             | Pause or resume · quiet ideas for 30 min                                                   |
 | Anywhere         | `fn 1–9` / `⌃⌥1–9`                          | Make the session's 1st…9th project active (the session keeps running)                      |
 | Panel            | `⌘1–9` · `⌘↑↓` · `⌘K` · `⌘S` · `⌘/` · `esc` | Pick · move · ask · select an area · all keys · close                                      |

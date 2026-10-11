@@ -109,6 +109,8 @@ export interface KlairState {
   saving: boolean // false → "This session isn't being saved"
   flower: FlowerMode
   panel: PanelView
+  /** Hidden for a moment with fn H: still open underneath, comes back as it was. */
+  panelHidden: boolean
   nudge: boolean
   suggestions: SuggestionSet | null
   answer: AnswerState | null

@@ -153,6 +153,7 @@ Keyboard-first: every action shows its shortcut on the control itself, and the o
 | Context | Keys | Action |
 |---|---|---|
 | Anywhere | `fn` | Open / close Klair (flower blooms / shrinks) |
+| Anywhere | `fn H` (or `⌃⌥H`) | Hide the open panel for a moment / bring it back unchanged: same ideas or answer, no fresh screenshot or ideas (a pill beside the flower shows it's hidden) |
 | Anywhere | `fn P` | Pause / resume observing |
 | Anywhere | `fn Q` | Quiet ideas for 30 min |
 | Anywhere | `fn 1`–`fn 9` (or `⌃⌥1`–`⌃⌥9`) | Switch to the session in that slot; the running one is ended and saved first |

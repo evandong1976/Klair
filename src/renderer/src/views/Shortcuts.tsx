@@ -8,6 +8,7 @@ const GROUPS: { title: string; rows: [string, string][] }[] = [
     title: 'Anywhere',
     rows: [
       ['Open or close Klair', 'fn  ·  ⌃⌥K'],
+      ['Hide Klair, back as it was', 'fn H  ·  ⌃⌥H'],
       ['Pause or resume observing', 'fn P  ·  ⌃⌥P'],
       ['Quiet ideas for 30 min', 'fn Q  ·  ⌃⌥Q'],
       ['Switch session', 'fn 1–9  ·  ⌃⌥1–9']

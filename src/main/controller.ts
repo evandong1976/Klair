@@ -393,6 +393,7 @@ export async function endSession(): Promise<void> {
     idle: false,
     answer: null,
     panel: 'closed',
+    panelHidden: false,
     selection: null,
     downloads: []
   })
@@ -763,7 +764,7 @@ function showPanelAgain(): void {
   core.setPanelOpen(true)
   if (!getState().idle || getState().selection) apply(core.requestNow())
   setState({ panel: view, nudge: false })
-  windows.showPanel()
+  showPanelWindow()
 }
 
 export async function finishSelection(rect: SelectionRect): Promise<void> {
@@ -822,7 +823,7 @@ export async function finishSelection(rect: SelectionRect): Promise<void> {
   core.setPanelOpen(true)
   setIdle(false) // the user picked something to work with
   apply(core.pin(id))
-  windows.showPanel()
+  showPanelWindow()
 }
 
 /** Unpin the selection: ideas and answers follow the screen again. */
@@ -1088,7 +1089,15 @@ async function doSuggest(generationId: number, captureId: number): Promise<void>
 
 // ------------------------------------------------------------------ panel & selection
 
+/** Show the panel window; a panel hidden with fn H comes back too. */
+function showPanelWindow(): void {
+  if (getState().panelHidden) setState({ panelHidden: false })
+  windows.showPanel()
+}
+
 export function openPanel(): void {
+  // Hidden with fn H: bring it back exactly as it was, without fresh ideas.
+  if (getState().panelHidden && getState().panel !== 'closed') return showPanelWindow()
   core.setPanelOpen(true)
   const s = getState()
   const view =
@@ -1098,19 +1107,32 @@ export function openPanel(): void {
   // Fresh ideas for the current screen, unless the shown ones are already for it.
   if (!getState().idle || getState().selection) apply(core.requestNow())
   setState({ panel: view, nudge: false })
-  windows.showPanel()
+  showPanelWindow()
 }
 
 export function closePanel(): void {
   const held = core.setPanelOpen(false) // a screen change that waited for the panel to close
-  setState({ panel: 'closed', nudge: false })
+  setState({ panel: 'closed', panelHidden: false, nudge: false })
   apply(held)
   windows.hidePanel()
 }
 
 export function togglePanel(): void {
-  if (getState().panel === 'closed') openPanel()
+  if (getState().panel === 'closed' || getState().panelHidden) openPanel()
   else closePanel()
+}
+
+/**
+ * fn H / ⌃⌥H: hide the panel for a moment and bring it back as it was. Unlike closing,
+ * it stays open underneath: screen changes keep being held, so its ideas or answer
+ * don't change and no fresh ideas are asked for. fn, fn H or the flower brings it back.
+ */
+export function toggleHidePanel(): void {
+  const s = getState()
+  if (s.panel === 'closed') return
+  if (s.panelHidden) return showPanelWindow()
+  setState({ panelHidden: true })
+  windows.hidePanel()
 }
 
 export function showShortcuts(): void {
@@ -1219,7 +1241,7 @@ async function execute(run: {
   }
   core.setPanelOpen(true)
   setState({ answer: base, panel: 'answer', nudge: false, notice: null })
-  windows.showPanel()
+  showPanelWindow()
 
   // The action row is written alongside the model call rather than ahead of it.
   let actionId: number | null = null

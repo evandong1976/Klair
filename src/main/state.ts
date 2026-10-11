@@ -16,6 +16,7 @@ let state: KlairState = {
   saving: true,
   flower: 'off',
   panel: 'closed',
+  panelHidden: false,
   nudge: false,
   suggestions: null,
   answer: null,
@@ -37,7 +38,7 @@ const listeners = new Set<(s: KlairState) => void>()
 
 function flowerMode(s: KlairState): FlowerMode {
   if (!s.session || s.observing === 'off') return 'off'
-  if (s.panel !== 'closed') return 'open'
+  if (s.panel !== 'closed' && !s.panelHidden) return 'open'
   if (s.observing === 'paused' || !s.saving) return 'paused'
   if (s.nudge) return 'ideas'
   return 'observing'

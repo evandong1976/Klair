@@ -52,6 +52,7 @@ app.whenReady().then(async () => {
     toggle: () => c.togglePanel(),
     pause: () => void c.togglePause(),
     quiet: () => c.toggleQuiet(),
+    hide: () => c.toggleHidePanel(),
     session: (slot) => void c.switchToSlot(slot)
   })
   if (!keys.fn && !keys.fallback.toggle) {
