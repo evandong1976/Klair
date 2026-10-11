@@ -7,7 +7,9 @@ import {
 } from '../shared/types'
 import { deepNoEmDash } from '../shared/text'
 import * as c from './controller'
-import { listSessions } from './local'
+import { getProject, listProjects, listSessions } from './local'
+import { projectGraph, rebuildGraph } from './graphs'
+import { graphHtmlPath } from './paths'
 import { retryFnKey } from './fnkey'
 import { lastHealth, runHealth } from './health'
 import { setToggleKey } from './shortcuts'
@@ -48,8 +50,10 @@ const handlers: Handlers = {
   dismissIdeas: async () => c.dismissIdeas(),
   setPanelSize: async (w, h) => windows.resizePanel(Number(w), Number(h)),
   setFlowerInteractive: async (on) => windows.setFlowerInteractive(Boolean(on)),
-  startSession: (name) => c.startSession(String(name)),
-  continueSession: (id) => c.continueSession(Number(id)),
+  startSession: (ids) => c.startSession(Array.isArray(ids) ? ids.map(Number) : []),
+  createProject: (name) => c.createProject(String(name)),
+  addToSession: (id) => c.addToSession(Number(id)),
+  switchProject: (id) => c.switchProject(Number(id)),
   pause: () => c.pause(),
   resume: () => c.resume(),
   endSession: () => c.endSession(),
@@ -86,8 +90,38 @@ const handlers: Handlers = {
     const url = SETTINGS_URLS[pane]
     if (url) await shell.openExternal(url)
   },
-  openWindow: async (name) => (name === 'sessions' ? windows.openSessions() : windows.openStart()),
+  openWindow: async (name) =>
+    name === 'sessions'
+      ? windows.openSessions()
+      : name === 'graph'
+        ? windows.openGraph(c.activeProjectId())
+        : windows.openStart(),
   openShot: (id) => c.shotDataUrl(Number(id)),
+  listProjects: () => listProjects().catch(() => []),
+  deleteProject: (id) => c.deleteProject(Number(id)),
+  openGraph: async (id) => {
+    // The given project, else the active one, else the most recently used.
+    const pid =
+      (id != null && (await getProject(Number(id)))?.id) ||
+      c.activeProjectId() ||
+      (await listProjects().catch(() => []))[0]?.id ||
+      null
+    windows.openGraph(pid)
+  },
+  projectGraph: (id) => projectGraph(Number(id)),
+  rebuildGraph: async (id) => rebuildGraph(Number(id)),
+  showGraph: async (id, rect) =>
+    windows.showGraphView(
+      id == null ? null : graphHtmlPath(Number(id)),
+      rect
+        ? {
+            x: Number(rect.x),
+            y: Number(rect.y),
+            width: Number(rect.width),
+            height: Number(rect.height)
+          }
+        : null
+    ),
   startSelection: async () => c.startSelection(),
   finishSelection: (rect) =>
     c.finishSelection({

@@ -10,8 +10,8 @@ import { graphPath, notesDir } from './paths'
 
 // One entry point for "relevant history": Graphify graph context plus keyword search
 // over notes, deduped, labelled with provenance and trimmed to a budget. Both look
-// only at the session the user is in (its graph, its notes in the local SQLite
-// store), so one session's material never reaches another's answers. Either source
+// only at the project the user is in (its graph, its notes in the local SQLite
+// store), so one project's material never reaches another's answers. Either source
 // failing still leaves the other.
 
 export interface Retrieved {
@@ -31,18 +31,18 @@ function timeLabel(iso: string): string {
 
 export async function retrieve(
   question: string,
-  opts: { sessionId: number; excludeCaptureId: number | null }
+  opts: { projectId: number; excludeCaptureId: number | null }
 ): Promise<Retrieved> {
-  if (baselineMode) return fullSessionBaseline(opts.sessionId)
+  if (baselineMode) return fullProjectBaseline(opts.projectId)
   const budgetChars = config.retrievalBudget * CHARS_PER_TOKEN
   const parts: string[] = []
   const sources: Provenance[] = []
   let graphOk = false
 
   const [graph, found] = await Promise.allSettled([
-    queryContext(graphPath(opts.sessionId), question, Math.round(config.retrievalBudget * 0.6)),
+    queryContext(graphPath(opts.projectId), question, Math.round(config.retrievalBudget * 0.6)),
     store.searchNotes(question, {
-      sessionId: opts.sessionId,
+      projectId: opts.projectId,
       excludeCaptureId: opts.excludeCaptureId,
       limit: 8
     })
@@ -68,7 +68,7 @@ export async function retrieve(
         ? `Your file · ${h.fileName.slice(0, 40)}`
         : h.provenance === 'assistant'
           ? `Klair's earlier answer · ${timeLabel(h.createdAt)}`
-          : `Earlier in this session · ${timeLabel(h.createdAt)}`
+          : `Earlier in this project · ${timeLabel(h.createdAt)}`
       sources.push({
         kind: h.provenance === 'assistant' ? 'assistant' : 'earlier',
         label,
@@ -78,7 +78,7 @@ export async function retrieve(
         `### ${label}${h.provenance === 'assistant' ? ' (generated earlier, not observed)' : ''}\n${h.body.slice(0, 900)}`
       )
     }
-    if (lines.length) parts.push(`## Related notes (session search)\n${lines.join('\n\n')}`)
+    if (lines.length) parts.push(`## Related notes (project search)\n${lines.join('\n\n')}`)
   }
 
   let text = parts.join('\n\n')
@@ -93,9 +93,9 @@ export async function retrieve(
   }
 }
 
-/** KLAIR_BASELINE=full: every note in the session, for token comparisons. */
-async function fullSessionBaseline(sessionId: number): Promise<Retrieved> {
-  const dir = notesDir(sessionId)
+/** KLAIR_BASELINE=full: every note in the project, for token comparisons. */
+async function fullProjectBaseline(projectId: number): Promise<Retrieved> {
+  const dir = notesDir(projectId)
   let text = ''
   if (existsSync(dir)) {
     const files = (await readdir(dir)).filter((f) => f.endsWith('.md')).sort()

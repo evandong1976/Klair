@@ -97,6 +97,22 @@ export class ControllerCore {
     return this.switchTo(captureId)
   }
 
+  /**
+   * Another project became active: nothing from the previous one's screen carries over
+   * (its capture, ideas, held change or pinned selection). The next capture starts afresh.
+   */
+  resetContext(): void {
+    this.currentCaptureId = null
+    this.current = null
+    this.inflightGeneration = null
+    this.heldCaptureId = null
+    this.pinnedCaptureId = null
+    this.latestAutoCaptureId = null
+    this.offeredForCapture = null
+    this.executingSetId = null
+    this.dwellStart = this.now()
+  }
+
   /** A selected area becomes the context until it's cleared or replaced. */
   pin(captureId: number): Effect[] {
     this.pinnedCaptureId = captureId

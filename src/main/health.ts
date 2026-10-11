@@ -7,6 +7,7 @@ import { config } from './config'
 import { capabilities, getPool, migrate, ping, timescaleVersion } from './db'
 import { retryFnKey } from './fnkey'
 import { graphifyAvailable } from './graphify'
+import { indexerStatus } from './indexer'
 import type { BridgeInfo } from './bridge'
 import { localStatus } from './local'
 import { recordMetric } from './metrics'
@@ -217,10 +218,13 @@ async function doRunHealth(opts: { skipModel?: boolean }): Promise<HealthReport>
     {
       id: 'graphify',
       label: 'Graphify',
-      status: graphify.ok ? 'ok' : 'warn',
-      detail: graphify.ok
-        ? graphify.detail
-        : `${graphify.detail} Answers will use on-screen context only.`
+      // A build that failed since the last check says why (e.g. a missing package).
+      status: graphify.ok && indexerStatus()?.ok !== false ? 'ok' : 'warn',
+      detail: !graphify.ok
+        ? `${graphify.detail} Answers will use on-screen context only.`
+        : indexerStatus()?.ok === false
+          ? `Last graph build failed: ${indexerStatus()?.detail}`
+          : graphify.detail
     },
     {
       id: 'cache',

@@ -2,7 +2,7 @@ import { appendFile } from 'fs/promises'
 import { metricsFile } from './paths'
 
 // Token accounting for the brief's measurement requirement. One JSON line per model
-// call: compare runs with KLAIR_BASELINE=full (whole session as context) against the
+// call: compare runs with KLAIR_BASELINE=full (whole project as context) against the
 // default (Graphify + TigerData retrieval). Indexing cost: use GRAPHIFY_OPENROUTER_KEY
 // so OpenRouter reports Graphify's usage separately.
 export interface MetricLine {
@@ -14,7 +14,7 @@ export interface MetricLine {
   ms: number
   /** Answers only: time until the first streamed word. */
   firstMs?: number
-  sessionId?: number | null
+  projectId?: number | null
 }
 
 export function recordMetric(m: MetricLine): void {

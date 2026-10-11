@@ -2,43 +2,44 @@ import { app } from 'electron'
 import { mkdirSync } from 'fs'
 import { join } from 'path'
 
-// Local layout (screenshots never leave the Mac). <id> is the session's id in the
-// local SQLite store (local.ts); the "local-" prefix keeps these apart from folders
-// older builds named after TigerData ids.
-//   <userData>/sessions/local-<id>/shots/*.png     screenshots
-//   <userData>/sessions/local-<id>/notes/*.md      notes Graphify indexes
-//   <userData>/sessions/local-<id>/graphify-out/   Graphify's graph
-export const SESSION_DIR_PREFIX = 'local-'
+// Local layout, one folder per project (screenshots and added files never leave the
+// Mac). <id> is the project's id in the local SQLite store (local.ts).
+//   <userData>/projects/local-<id>/shots/*.png           screenshots
+//   <userData>/projects/local-<id>/files/                files added from Downloads
+//   <userData>/projects/local-<id>/notes/*.md            notes Graphify indexes
+//   <userData>/projects/local-<id>/graphify-out/         the project's graph (graph.json, graph.html)
+export const PROJECT_DIR_PREFIX = 'local-'
 
-export function sessionsRoot(): string {
-  return join(app.getPath('userData'), 'sessions')
+export function projectsRoot(): string {
+  return join(app.getPath('userData'), 'projects')
 }
 
-export function sessionDir(sessionId: number): string {
-  return join(sessionsRoot(), `${SESSION_DIR_PREFIX}${sessionId}`)
+export function projectDir(projectId: number): string {
+  return join(projectsRoot(), `${PROJECT_DIR_PREFIX}${projectId}`)
 }
 
-export function shotsDir(sessionId: number): string {
-  const d = join(sessionDir(sessionId), 'shots')
+function sub(projectId: number, name: string): string {
+  const d = join(projectDir(projectId), name)
   mkdirSync(d, { recursive: true })
   return d
 }
 
-export function notesDir(sessionId: number): string {
-  const d = join(sessionDir(sessionId), 'notes')
-  mkdirSync(d, { recursive: true })
-  return d
-}
-
+export const shotsDir = (projectId: number): string => sub(projectId, 'shots')
+export const notesDir = (projectId: number): string => sub(projectId, 'notes')
 /** Copies of files the user added from Downloads. */
-export function filesDir(sessionId: number): string {
-  const d = join(sessionDir(sessionId), 'files')
-  mkdirSync(d, { recursive: true })
-  return d
+export const filesDir = (projectId: number): string => sub(projectId, 'files')
+
+export function graphDir(projectId: number): string {
+  return join(projectDir(projectId), 'graphify-out')
 }
 
-export function graphPath(sessionId: number): string {
-  return join(sessionDir(sessionId), 'graphify-out', 'graph.json')
+export function graphPath(projectId: number): string {
+  return join(graphDir(projectId), 'graph.json')
+}
+
+/** Graphify's interactive view of the project's graph (graphify export html). */
+export function graphHtmlPath(projectId: number): string {
+  return join(graphDir(projectId), 'graph.html')
 }
 
 export function metricsFile(): string {

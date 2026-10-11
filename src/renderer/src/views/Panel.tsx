@@ -172,6 +172,34 @@ export function PanelWindow(): React.JSX.Element | null {
   )
 }
 
+/** The project everything goes into right now; click to switch, or open its graph. */
+function ProjectChip({
+  project
+}: {
+  project: NonNullable<KlairState['project']>
+}): React.JSX.Element {
+  return (
+    <div className="flex items-center justify-between gap-2 text-[12.5px] font-semibold text-ink-3">
+      <button
+        type="button"
+        title="Switch project"
+        onClick={() => void klair.openWindow('start')}
+        className="flex items-center gap-1.5 h-7 pl-1.5 pr-2.5 rounded-full border border-sage-line bg-sage-tint-2 text-sage-deep cursor-pointer hover:bg-sage-tint"
+      >
+        {project.slot ? <Key variant="small">{String(project.slot)}</Key> : null}
+        {project.name}
+      </button>
+      <button
+        type="button"
+        onClick={() => void klair.openGraph(project.id)}
+        className="cursor-pointer hover:text-ink"
+      >
+        Knowledge graph
+      </button>
+    </div>
+  )
+}
+
 /** The pinned selection: a thumbnail, and a way back to following the whole screen. */
 function SelectionChip({
   selection
@@ -335,11 +363,11 @@ function IdeasView({
         <PixelLabel>Klair</PixelLabel>
         <h1 className="m-0 text-[19px] font-extrabold">No session running</h1>
         <p className="m-0 text-[14.5px] text-ink-2">
-          Start a session so Klair can see your screen and offer ideas.
+          Pick a project to work in so Klair can see your screen and offer ideas.
         </p>
         <div className="flex justify-end">
           <Button kind="primary" onClick={() => void klair.openWindow('start')}>
-            Start a session
+            Pick a project
           </Button>
         </div>
       </div>
@@ -348,6 +376,7 @@ function IdeasView({
   const idle = idleNow(state)
   return (
     <>
+      {state.project ? <ProjectChip project={state.project} /> : null}
       {state.downloads.length ? <DownloadOfferCards offers={state.downloads} /> : null}
       {state.selection ? <SelectionChip selection={state.selection} /> : null}
       {idle ? (

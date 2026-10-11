@@ -10,6 +10,8 @@ import { DEFAULT_FLOWER_STYLE, isFlowerStyle } from '../shared/flower'
 
 let state: KlairState = {
   session: null,
+  project: null,
+  sessionProjects: [],
   observing: 'off',
   saving: true,
   flower: 'off',
