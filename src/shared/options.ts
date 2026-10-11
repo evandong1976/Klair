@@ -165,6 +165,16 @@ export const MENUS: Record<ProjectType, MenuOption[]> = {
       needs: 'history'
     },
     {
+      id: 'prepare',
+      title: 'Get ready for it',
+      line: 'Practice aimed at what is coming up',
+      kind: 'other',
+      when: "Only when project-knowledge-graph lists an exam, quiz, homework or deadline that is still ahead of today's date and that this topic belongs to.",
+      about: 'that exam, homework or deadline and how soon it is, such as "Midterm 1, in 3 days"',
+      task: 'An exam, homework or deadline this topic belongs to is coming up (named below). Prepare the user for it from what is on screen: the questions it is most likely to ask about this material, each with a short worked answer, then what to review first.',
+      needs: 'history'
+    },
+    {
       id: 'example',
       title: 'Worked example',
       line: 'One problem solved step by step',
@@ -237,6 +247,52 @@ export const MENUS: Record<ProjectType, MenuOption[]> = {
 /** Work → Study → Research → Work: what ⌘T and the type chip step through. */
 export const nextType = (type: ProjectType): ProjectType =>
   PROJECT_TYPES[(PROJECT_TYPES.indexOf(type) + 1) % PROJECT_TYPES.length]
+
+/**
+ * What Klair marks on the Chrome page after each option answers (main/highlights.ts): the
+ * passages the answer came from, so the user can see them in place. `false`: nothing is
+ * marked (a quiz would give its answers away; a draft or prompt isn't about the page).
+ * An option not listed, and a typed question, get the general rule.
+ */
+export const MARKS: Record<string, { what: string; max: number } | false> = {
+  summarize: {
+    what: 'one passage for each main point of the summary, in the order they appear on the page, so the user sees where each point comes from',
+    max: 6
+  },
+  catchup: { what: "the passages that need the user's attention or a reply", max: 4 },
+  explain: {
+    what: 'the sentences that state or define what was explained, and the one hardest to follow',
+    max: 3
+  },
+  terms: {
+    what: 'for each term, the sentence or clause where the page introduces or defines it (not the bare word); the note gives its meaning in a few words',
+    max: 6
+  },
+  example: { what: 'the formula, rule or method statement the example applies', max: 2 },
+  interactive: { what: 'the sentence that introduces the idea the explainer shows', max: 2 },
+  relate: { what: 'the passages on this page that connect to the earlier topic', max: 3 },
+  prepare: { what: 'the passages most likely to be examined', max: 4 },
+  claims: {
+    what: 'the sentence where each claim is made; the note says what supports it and how strongly',
+    max: 6
+  },
+  compare: {
+    what: 'the passages that agree with, contradict or extend the earlier source; the note says which',
+    max: 4
+  },
+  carry: { what: "the passages worth carrying into the user's notes or draft", max: 4 },
+  gaps: {
+    what: 'the passages where a limit, an assumption or an unanswered question shows',
+    max: 4
+  },
+  fix: { what: 'the line that shows the problem', max: 2 },
+  review: { what: 'the passages with the problems raised; the note says what to change', max: 5 },
+  quiz: false,
+  draft: false,
+  handoff: false,
+  ideas: false,
+  do: false
+}
 
 /** The three options shown before a screen has been checked. */
 export const topOptions = (type: ProjectType): MenuOption[] => MENUS[type].filter((o) => o.top)

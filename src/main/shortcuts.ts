@@ -7,11 +7,12 @@ import { getState, setState } from './state'
 
 // Global keys (DESIGN.md §4). Only the fn family is global; ⌘ keys are handled by
 // the panel itself while it has focus. Until the native fn addon runs, ⌃⌥K / ⌃⌥P /
-// ⌃⌥Q do the same jobs. fn 1–9 (and always ⌃⌥1–9) switch to the project in that slot.
+// ⌃⌥Q / ⌃⌥H do the same jobs. fn 1–9 (and always ⌃⌥1–9) switch to the project in that
+// slot. fn H (and always ⌃⌥H) hides the open panel and brings it back unchanged.
 
 export interface ShortcutResult {
   fn: boolean
-  fallback: { toggle: boolean; pause: boolean; quiet: boolean }
+  fallback: { toggle: boolean; pause: boolean; quiet: boolean; hide: boolean }
 }
 
 let onToggle: () => void = () => {}
@@ -39,6 +40,7 @@ export function registerShortcuts(h: {
   toggle: () => void
   pause: () => void
   quiet: () => void
+  hide: () => void
   session: (slot: number) => void
 }): ShortcutResult {
   onToggle = h.toggle
@@ -47,6 +49,7 @@ export function registerShortcuts(h: {
     onChord: (key) => {
       if (key === 'p') h.pause()
       if (key === 'q') h.quiet()
+      if (key === 'h') h.hide()
       if (/^[1-9]$/.test(key)) h.session(Number(key))
     }
   })
@@ -56,7 +59,8 @@ export function registerShortcuts(h: {
     fallback: {
       toggle: reg(getState().toggleKey, h.toggle),
       pause: reg(config.fallbackKeys.pause, h.pause),
-      quiet: reg(config.fallbackKeys.quiet, h.quiet)
+      quiet: reg(config.fallbackKeys.quiet, h.quiet),
+      hide: reg(config.fallbackKeys.hide, h.hide)
     }
   }
 }

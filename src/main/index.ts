@@ -54,6 +54,7 @@ app.whenReady().then(async () => {
     toggle: () => c.togglePanel(),
     pause: () => void c.togglePause(),
     quiet: () => c.toggleQuiet(),
+    hide: () => c.toggleHidePanel(),
     session: (slot) => void c.switchToSlot(slot)
   })
   if (!keys.fn && !keys.fallback.toggle) {
@@ -72,7 +73,8 @@ app.whenReady().then(async () => {
       fnHeld: () => claimFnHold(),
       condense: async function* (input, signal) {
         yield* condense(input, await c.activeProjectContext(), signal)
-      }
+      },
+      highlights: (url) => c.pageHighlightsFor(url)
     },
     { port: config.bridgePort, extensionId: config.extensionId }
   )

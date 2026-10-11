@@ -41,7 +41,7 @@ export function FlowerWindow(): React.JSX.Element | null {
     !!s &&
     s.flower !== 'off' &&
     !open &&
-    (!!s.notice || s.observing === 'paused' || s.nudge || !!offer)
+    (!!s.notice || s.observing === 'paused' || s.nudge || !!offer || s.panelHidden)
   useEffect(() => {
     // Never leave the corner clickable once the pill is gone.
     if (!hasPill) void klair.setFlowerInteractive(false)
@@ -92,6 +92,14 @@ export function FlowerWindow(): React.JSX.Element | null {
           className={`${PILL} outline-2 outline-danger-outline`}
         >
           This session isn&apos;t being saved
+        </button>
+      )
+    } else if (s.panelHidden) {
+      // Hidden with fn H: still open underneath, back as it was with a click or fn H.
+      pill = (
+        <button type="button" {...hover} onClick={() => void klair.openPanel()} className={PILL}>
+          Klair is hidden
+          <Key className="text-[11.5px] px-2 py-[5px]">{openKey === 'fn' ? 'fn H' : '⌃⌥H'}</Key>
         </button>
       )
     } else if (s.notice?.kind === 'screen-access') {

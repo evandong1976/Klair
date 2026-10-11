@@ -70,7 +70,7 @@ function prose(text: string): MdBlock[] {
     }
     for (const line of para.split('\n')) {
       if (!line.trim()) continue
-      const bullet = /^(\s*)[-*]\s+(.*)$/.exec(line)
+      const bullet = /^(\s*)[-*•]\s+(.*)$/.exec(line)
       const numbered = /^\s*(\d+)[.)]\s+(.*)$/.exec(line)
       const heading = /^#{1,4}\s+(.*)$/.exec(line)
       const cur = run as Raw | null

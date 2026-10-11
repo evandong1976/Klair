@@ -16,6 +16,7 @@ export interface MetricLine {
     | 'explore'
     | 'brief'
     | 'condense'
+    | 'highlight'
   mode: 'retrieval' | 'baseline'
   inputTokens?: number
   outputTokens?: number

@@ -129,7 +129,7 @@ function buildSystem(type: ProjectType): string {
     `Then choose from a fixed menu. The menu below is everything Klair can offer on this screen: you pick entries from it and write none of their wording.
 Put an entry in options when its rule is met. An entry whose rule starts with "Always" belongs on any screen with content unless the rule itself rules this screen out. An entry whose rule starts with "Only when" belongs only if you can point to the thing on screen that meets it: when unsure, leave it out.
 about is a short name for the thing on screen the entry is about, for the entries that ask for one: at most six words, a noun phrase in the screen's own wording, with no verb such as "explain" and no sentence. Leave it empty for the other entries, or when nothing specific stands out.
-You may get a list of what the user's project has covered earlier (project-so-far). It matters only for the entries that mention it.
+You may get a list of what the user's project has covered earlier (project-so-far), and concepts and links from the project's knowledge graph (project-knowledge-graph), built from earlier study. Both count as what the project covered earlier and matter only for the entries that mention it; use the graph's concept names exactly and never invent earlier material.
 Menu:
 ${entries}`,
     EXPLORE,
@@ -164,6 +164,8 @@ export async function makeVisionNote(
     type?: ProjectType
     selection?: boolean
     projectContext?: string
+    /** Concepts and links from the project's Graphify graph near this screen. */
+    graphContext?: string
     signal?: AbortSignal
   } = {}
 ): Promise<VisionNote> {
@@ -192,9 +194,11 @@ export async function makeVisionNote(
           content: [
             {
               type: 'text',
-              text: metaLine
-                ? `Window metadata (may be incomplete): ${metaLine}`
-                : 'No window metadata.'
+              text: `Today: ${new Date().toDateString()}. ${
+                metaLine
+                  ? `Window metadata (may be incomplete): ${metaLine}`
+                  : 'No window metadata.'
+              }`
             },
             ...(options.selection
               ? [
@@ -220,6 +224,17 @@ export async function makeVisionNote(
                   {
                     type: 'text' as const,
                     text: fenceUntrusted('project-so-far', options.projectContext)
+                  }
+                ]
+              : []),
+            ...(options.graphContext
+              ? [
+                  {
+                    type: 'text' as const,
+                    text: fenceUntrusted(
+                      'project-knowledge-graph',
+                      `Concepts and links near this screen in the project's knowledge graph (built by Graphify from earlier study):\n${options.graphContext}`
+                    )
                   }
                 ]
               : []),

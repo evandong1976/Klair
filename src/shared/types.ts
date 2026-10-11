@@ -60,6 +60,8 @@ export interface AnswerState {
   reshape: string[]
   sources: Provenance[]
   historyUnavailable: boolean
+  /** Passages Klair marked on the Chrome page this answer is about (the extension shows them). */
+  highlighted?: number
   error?: string
 }
 
@@ -125,6 +127,8 @@ export interface KlairState {
   saving: boolean // false → "This session isn't being saved"
   flower: FlowerMode
   panel: PanelView
+  /** Hidden for a moment with fn H: still open underneath, comes back as it was. */
+  panelHidden: boolean
   nudge: boolean
   suggestions: SuggestionSet | null
   answer: AnswerState | null

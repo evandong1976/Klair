@@ -125,7 +125,8 @@ test('"All options" lists the whole menu and dims what cannot run here', () => {
   const dimmed = set.ideas.filter((i) => i.disabled).map((i) => [i.option, i.subtitle])
   assert.deepEqual(dimmed, [
     ['interactive', 'Nothing here to draw'],
-    ['relate', 'Nothing earlier in this project yet']
+    ['relate', 'Nothing earlier in this project yet'],
+    ['prepare', 'Nothing earlier in this project yet']
   ])
   // What the note named is kept on the entries it picked.
   assert.equal(set.ideas.find((i) => i.option === 'explain')?.subtitle, 'The update rule')

@@ -5,7 +5,7 @@ import { copyFile, readdir, readFile, rm, stat, unlink, writeFile } from 'fs/pro
 import { join } from 'path'
 import { promisify } from 'util'
 import type { AnswerOutput } from '../shared/blocks'
-import { isProjectType, type ProjectType } from '../shared/options'
+import { isProjectType, MARKS, type ProjectType } from '../shared/options'
 import type {
   ProjectItem,
   DownloadOffer,
@@ -34,6 +34,8 @@ import { extractText, fileKind, imageForModel } from './files'
 import * as store from './local'
 import { answerToText, runAssistance } from './execute'
 import { buildQuiz } from './quiz'
+import { compactGraph, COURSEWORK_QUERY, queryContext, screenQuery } from './graphify'
+import { pickHighlights, samePage, type HighlightSet } from './highlights'
 import { lastHealth, runHealth } from './health'
 import { cancelIndex, scheduleIndex } from './indexer'
 import {
@@ -43,7 +45,15 @@ import {
   type PageContext,
   type VisionNote
 } from './notes'
-import { filesDir, notesDir, PROJECT_DIR_PREFIX, projectDir, projectsRoot, shotsDir } from './paths'
+import {
+  filesDir,
+  graphPath,
+  notesDir,
+  PROJECT_DIR_PREFIX,
+  projectDir,
+  projectsRoot,
+  shotsDir
+} from './paths'
 import { retrieve } from './retrieve'
 import { getState, setState } from './state'
 import { defaultSuggestions, suggestionsFromNote } from './suggest'
@@ -105,6 +115,9 @@ let staleTimer: NodeJS.Timeout | null = null
 // note model with each new screenshot, which says whether the screenshot shows it.
 const LIVE_PAGE_MS = 30 * 60_000
 let livePage: (PageContext & { id: number; at: number }) | null = null
+// Passages marked on a Chrome page for the latest answer about it (highlights.ts). The
+// extension asks for them by URL; a new answer, project or session clears them.
+let pageHighlights: HighlightSet | null = null
 
 // ------------------------------------------------------------------ helpers
 
@@ -268,6 +281,7 @@ async function enterProject(p: {
   captures.clear()
   notePromises.clear()
   livePage = null
+  pageHighlights = null
   currentTopic = null
   notedThumb = null
   core.resetContext()
@@ -465,6 +479,7 @@ export async function endSession(): Promise<void> {
   sessionId = null
   projectId = null
   livePage = null
+  pageHighlights = null
   core.resetContext()
   setState({
     session: null,
@@ -478,6 +493,7 @@ export async function endSession(): Promise<void> {
     idleSeen: null,
     answer: null,
     panel: 'closed',
+    panelHidden: false,
     selection: null,
     downloads: []
   })
@@ -746,13 +762,53 @@ interface StartedNote {
   note: Promise<VisionNote>
 }
 
+/**
+ * What the project's Graphify graph holds around this screen (found from the window and
+ * page titles and the URL, since the note isn't written yet), and its coursework: exams,
+ * homework and deadlines, so ideas can aim at what's coming. Local, no model call,
+ * ~0.1–0.3 s per query; empty when the project has no graph yet or nothing matches.
+ */
+async function graphNearScreen(
+  sid: number,
+  frame: Frame,
+  page: PageContext | null
+): Promise<string> {
+  const graph = graphPath(sid)
+  const ask = (q: string, budget: number): Promise<string> =>
+    q
+      ? queryContext(graph, q, budget).then(
+          (out) => compactGraph(out, 28),
+          () => ''
+        )
+      : Promise.resolve('')
+  const [near, coursework] = await Promise.all([
+    ask(screenQuery(frame.meta.windowTitle, page?.title ?? null, frame.meta.url), 600),
+    ask(COURSEWORK_QUERY, 300)
+  ])
+  const nearLines = new Set(near.split('\n'))
+  const due = coursework
+    .split('\n')
+    .filter((l) => l && !nearLines.has(l))
+    .slice(0, 12)
+  return [
+    near ? `Near this screen:\n${near}` : '',
+    due.length ? `Coursework (exams, homework, deadlines):\n${due.join('\n')}` : ''
+  ]
+    .filter(Boolean)
+    .join('\n\n')
+}
+
 async function startNote(sid: number, frame: Frame, selection = false): Promise<StartedNote> {
   const page = livePage && Date.now() - livePage.at < LIVE_PAGE_MS ? livePage : null
-  const context = await projectContext(sid)
+  const [soFar, graph] = await Promise.all([projectContext(sid), graphNearScreen(sid, frame, page)])
+  // Earlier notes and the knowledge graph together are what the project has covered:
+  // the menu's "earlier" entries are judged, and later checked, against both.
+  const context = [soFar, graph].filter(Boolean).join('\n\n')
   const note = makeVisionNote(frame.png, frame.hash, frame.meta, sid, page, {
     type: projectType,
     selection,
-    projectContext: context
+    projectContext: soFar,
+    graphContext: graph
   })
   note.catch(() => {}) // a dropped note must not surface as an unhandled rejection
   return { page, context, note }
@@ -774,7 +830,10 @@ async function noteFor(
     const note = await pending
     mem.note = note
     currentTopic = note.topic
-    if (page && note.chromePageOnScreen) {
+    // Linked when the note model sees the page in the screenshot, or when Chrome's front
+    // tab is that page: then answers (summaries above all) get the whole page.
+    const frontTab = frame.meta.url && page && samePage(frame.meta.url, page.url)
+    if (page && (note.chromePageOnScreen || frontTab)) {
       mem.pageId = page.id
       await store.linkCaptureToPage(mem.id, page.id)
     }
@@ -856,7 +915,7 @@ function showPanelAgain(): void {
   core.setPanelOpen(true)
   if (!getState().idle || getState().selection) apply(core.requestNow())
   setState({ panel: view, nudge: false })
-  windows.showPanel()
+  showPanelWindow()
 }
 
 export async function finishSelection(rect: SelectionRect): Promise<void> {
@@ -916,7 +975,7 @@ export async function finishSelection(rect: SelectionRect): Promise<void> {
   core.setPanelOpen(true)
   setIdle(null) // the user picked something to work with
   apply(core.pin(id))
-  windows.showPanel()
+  showPanelWindow()
 }
 
 /** Unpin the selection: ideas and answers follow the screen again. */
@@ -1216,7 +1275,15 @@ async function doSuggest(
 
 // ------------------------------------------------------------------ panel & selection
 
+/** Show the panel window; a panel hidden with fn H comes back too. */
+function showPanelWindow(): void {
+  if (getState().panelHidden) setState({ panelHidden: false })
+  windows.showPanel()
+}
+
 export function openPanel(): void {
+  // Hidden with fn H: bring it back exactly as it was, without fresh ideas.
+  if (getState().panelHidden && getState().panel !== 'closed') return showPanelWindow()
   core.setPanelOpen(true)
   const s = getState()
   const view =
@@ -1226,20 +1293,33 @@ export function openPanel(): void {
   // Fresh ideas for the current screen, unless the shown ones are already for it.
   if (!getState().idle || getState().selection) apply(core.requestNow())
   setState({ panel: view, nudge: false })
-  windows.showPanel()
+  showPanelWindow()
 }
 
 export function closePanel(): void {
   const held = core.setPanelOpen(false) // a screen change that waited for the panel to close
-  setState({ panel: 'closed', nudge: false })
+  setState({ panel: 'closed', panelHidden: false, nudge: false })
   apply(held)
   if (idleOnClose) setIdle(idleOnClose.why, idleOnClose.seen) // a quiet screen that waited likewise
   windows.hidePanel()
 }
 
 export function togglePanel(): void {
-  if (getState().panel === 'closed') openPanel()
+  if (getState().panel === 'closed' || getState().panelHidden) openPanel()
   else closePanel()
+}
+
+/**
+ * fn H / ⌃⌥H: hide the panel for a moment and bring it back as it was. Unlike closing,
+ * it stays open underneath: screen changes keep being held, so its ideas or answer
+ * don't change and no fresh ideas are asked for. fn, fn H or the flower brings it back.
+ */
+export function toggleHidePanel(): void {
+  const s = getState()
+  if (s.panel === 'closed') return
+  if (s.panelHidden) return showPanelWindow()
+  setState({ panelHidden: true })
+  windows.hidePanel()
 }
 
 export function showShortcuts(): void {
@@ -1369,6 +1449,7 @@ async function execute(run: {
   const abort = new AbortController()
   exec = { abort, token }
   const live = (): boolean => token === execToken && !abort.signal.aborted
+  pageHighlights = null
 
   const base: AnswerState = {
     actionId: `pending-${token}`,
@@ -1384,7 +1465,7 @@ async function execute(run: {
   }
   core.setPanelOpen(true)
   setState({ answer: base, panel: 'answer', nudge: false, notice: null })
-  windows.showPanel()
+  showPanelWindow()
 
   // The action row is written alongside the model call rather than ahead of it.
   let actionId: number | null = null
@@ -1538,6 +1619,11 @@ async function execute(run: {
       reshape: result.output.reshape
     }
     setState({ answer: done, lastAnswerTitle: result.output.title })
+    // What gets marked on the page depends on the option (a quiz or a draft marks nothing).
+    const mark = run.idea?.option ? MARKS[run.idea.option] : undefined
+    if (sid && img.page && mark !== false) {
+      void markPage(sid, run.task, img.page, result.output, live, done.actionId, mark)
+    }
     if (sid && actionId) {
       const text = answerToText(result.output)
       await store.finishAction(actionId, {
@@ -1602,6 +1688,38 @@ async function execute(run: {
     core.executionFinished()
     if (exec?.token === token) exec = null
   }
+}
+
+/** Mark the passages of the page an answer was about, for the Chrome extension to show. */
+async function markPage(
+  sid: number,
+  task: string,
+  page: PageContext,
+  output: AnswerOutput,
+  live: () => boolean,
+  actionId: string,
+  mark?: { what: string; max: number }
+): Promise<void> {
+  try {
+    const set = await pickHighlights({
+      answer: answerToText(output),
+      task,
+      page,
+      projectId: sid,
+      mark
+    })
+    if (!set || !live() || projectId !== sid) return
+    pageHighlights = set
+    const cur = getState().answer
+    if (cur?.actionId === actionId) setState({ answer: { ...cur, highlighted: set.items.length } })
+  } catch (err) {
+    console.warn('page highlights failed:', (err as Error).message)
+  }
+}
+
+/** The passages to mark on this page, if the latest answer was about it. */
+export function pageHighlightsFor(url: string): HighlightSet | null {
+  return pageHighlights && samePage(pageHighlights.url, url) ? pageHighlights : null
 }
 
 /** Abort the running request; late events are suppressed by the token check. */

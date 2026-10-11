@@ -49,7 +49,8 @@ export const config = {
   fallbackKeys: {
     toggle: pick('TOGGLE_KEY') ?? 'Control+Alt+K',
     pause: 'Control+Alt+P',
-    quiet: 'Control+Alt+Q'
+    quiet: 'Control+Alt+Q',
+    hide: 'Control+Alt+H'
   }
 }
 
