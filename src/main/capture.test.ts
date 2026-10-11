@@ -23,7 +23,8 @@ test('changes add up against the last stored frame', () => {
   const now = stored.slice()
   // Each tick changes 2% of cells: never enough tick to tick, enough once added up.
   for (let tick = 1; tick <= 3; tick++) {
-    for (let i = (tick - 1) * 51; i < tick * 51; i++) now[i] = 255 - now[i]
+    // Flip each cell to the far end of the scale: a clear change whatever CELL_DELTA is.
+    for (let i = (tick - 1) * 51; i < tick * 51; i++) now[i] = now[i] < 128 ? 255 : 0
   }
   assert.ok(changedShare(stored, now) >= CHANGE_SHARE)
 })
