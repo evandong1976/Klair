@@ -57,6 +57,16 @@ test('sessions that held context become projects; their time becomes sessions', 
   const moved = join(dir, 'projects', 'local-1', 'shots', 'a.png')
   assert.ok(existsSync(moved))
   assert.equal((await local.getCapture(1))?.path, moved)
+  // Work goes on in the migrated database: a new session and span get their times.
+  const live = await local.startSession()
+  await local.openSpan(live.id, 1)
+  const item = await local.getSession(live.id)
+  assert.equal(item?.status, 'active')
+  assert.ok(item?.startedAt)
+  assert.deepEqual(
+    item?.projects.map((x) => x.id),
+    [1]
+  )
   // Opening again doesn't migrate twice.
   local.setDatabaseFile(dbPath)
   assert.equal((await local.listProjects()).length, 1)

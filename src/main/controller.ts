@@ -220,11 +220,11 @@ async function enterProject(p: { id: number; name: string; slot: number | null }
  * Work in project `p`: starts a session if none is running, otherwise switches the
  * active project within it (the session keeps running).
  */
-async function workIn(p: { id: number; name: string; slot: number | null }): Promise<void> {
+async function workIn(p: { id: number; name: string; slot: number | null }): Promise<boolean> {
   const blocked = await cannotObserve()
   if (blocked) {
     setState({ notice: blocked, ...(blocked.kind === 'not-saving' ? { saving: false } : {}) })
-    return
+    return false
   }
   try {
     if (!sessionId) {
@@ -239,7 +239,7 @@ async function workIn(p: { id: number; name: string; slot: number | null }): Pro
       await store.openSpan(s.id, p.id)
       windows.closeStart()
       beginObserving()
-      return
+      return true
     }
     windows.closeStart()
     if (p.id !== projectId) {
@@ -248,15 +248,19 @@ async function workIn(p: { id: number; name: string; slot: number | null }): Pro
       flash({ kind: 'switched', detail: p.name })
     }
     if (getState().observing === 'paused') await resume()
+    return true
   } catch (err) {
     persistenceFailed(err)
+    return false
   }
 }
 
 /** A new project with this name, worked in from now on. */
 export async function startSession(name: string): Promise<void> {
   try {
-    await workIn(await store.createProject(name.trim() || 'Project'))
+    const p = await store.createProject(name.trim() || 'Project')
+    // Couldn't start working in it: don't leave an empty project behind for each try.
+    if (!(await workIn(p)) && projectId !== p.id) await store.deleteProjectRows(p.id)
   } catch (err) {
     persistenceFailed(err)
   }

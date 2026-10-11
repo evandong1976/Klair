@@ -259,14 +259,16 @@ function migrateSessionsToProjects(d: DatabaseSync, dataDir: string | null): voi
     d.exec(`alter table projects rename column started_at to created_at`)
     d.exec(`alter table projects rename column ended_at to last_used_at`)
     // Each former session's time becomes a session with one project span.
+    // Same definitions (and defaults) as a new database's.
     d.exec(`create table sessions (
       id integer primary key autoincrement, local_key text not null unique,
-      started_at text not null, ended_at text, status text not null default 'ended')`)
+      started_at text not null default (${NOW}), ended_at text,
+      status text not null default 'active')`)
     d.exec(`create table project_spans (
       id integer primary key autoincrement,
       session_id integer not null references sessions(id) on delete cascade,
       project_id integer not null references projects(id) on delete cascade,
-      started_at text not null, ended_at text)`)
+      started_at text not null default (${NOW}), ended_at text)`)
     const rows = d.prepare(`select id, created_at, last_used_at from projects`).all() as {
       id: number
       created_at: string
@@ -498,7 +500,12 @@ export async function deleteProjectRows(id: number): Promise<void> {
 // ---------------------------------------------------------------- sessions (time only)
 
 export async function startSession(): Promise<{ id: number; startedAt: string }> {
-  const id = run(`insert into sessions (local_key) values (?)`, randomUUID())
+  // Every column set explicitly: databases migrated by an earlier build created this
+  // table without defaults (and with 'ended' as the default status).
+  const id = run(
+    `insert into sessions (local_key, started_at, status) values (?, ${NOW}, 'active')`,
+    randomUUID()
+  )
   return {
     id,
     startedAt: String(one(`select started_at from sessions where id = ?`, id)?.started_at)
@@ -525,7 +532,11 @@ export async function openSpan(sessionId: number, projectId: number): Promise<vo
       `update project_spans set ended_at = ${NOW} where session_id = ? and ended_at is null`,
       sessionId
     )
-    run(`insert into project_spans (session_id, project_id) values (?, ?)`, sessionId, projectId)
+    run(
+      `insert into project_spans (session_id, project_id, started_at) values (?, ?, ${NOW})`,
+      sessionId,
+      projectId
+    )
   })
   await touchProject(projectId)
 }
