@@ -13,7 +13,11 @@ const bridge = new Bridge(
       pages.push(p)
       return { stored: true }
     },
-    status: () => ({ session: observing, observing })
+    status: () => ({ session: observing, observing }),
+    highlights: (url) =>
+      url.startsWith('https://en.wikipedia.org/wiki/Gradient_descent')
+        ? { id: 'h1', url, items: [{ quote: 'the learning rate', note: 'step size' }] }
+        : null
   },
   { port: 0, extensionId: 'abcdefghijklmnopabcdefghijklmnop' }
 )
@@ -118,5 +122,27 @@ test('malformed pages are rejected', async () => {
     (await call('POST', '/v1/page', { origin: EXT, body: page({ text: 'x'.repeat(250_001) }) }))
       .status,
     400
+  )
+})
+
+test('the tab on screen gets the passages marked for its page, and only those', async () => {
+  const url = encodeURIComponent('https://en.wikipedia.org/wiki/Gradient_descent#Description')
+  const r = await call('GET', `/v1/highlights?url=${url}`, { origin: EXT })
+  assert.equal(r.status, 200)
+  assert.deepEqual(r.json, {
+    session: true,
+    id: 'h1',
+    items: [{ quote: 'the learning rate', note: 'step size' }]
+  })
+  const other = await call(
+    'GET',
+    `/v1/highlights?url=${encodeURIComponent('https://example.com/')}`
+  )
+  assert.deepEqual(other.json, { session: true, id: null, items: [] })
+  const bad = await call('GET', `/v1/highlights?url=${encodeURIComponent('file:///etc/passwd')}`)
+  assert.deepEqual(bad.json, { session: true, id: null, items: [] })
+  assert.equal(
+    (await call('GET', '/v1/highlights?url=x', { origin: 'https://evil.example' })).status,
+    403
   )
 })

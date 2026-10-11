@@ -1,0 +1,114 @@
+/* Klair for Chrome: passages Klair marked on the page (content.js). Colours follow
+   Klair's palette (design/DESIGN.md): rose marks, blush and ink for the notes. */
+
+::highlight(klair) {
+  background-color: rgba(238, 131, 120, 0.26);
+  text-decoration: underline 2px rgba(238, 131, 120, 0.9);
+  text-underline-offset: 3px;
+}
+
+::highlight(klair-active) {
+  background-color: rgba(238, 131, 120, 0.45);
+}
+
+#klair-marks {
+  all: initial;
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2147483646;
+}
+
+#klair-marks .klair-mark {
+  all: initial;
+  position: fixed;
+  display: block;
+  pointer-events: auto;
+  font: 600 12px/1.4 -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;
+}
+
+#klair-marks .klair-badge {
+  all: initial;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 999px;
+  background: #ee8378;
+  border: 2px solid #fff;
+  box-shadow: 0 1px 4px rgba(45, 49, 40, 0.25);
+  color: #fff;
+  font: 800 11px/1 -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;
+  cursor: pointer;
+  animation: klair-pop 0.5s ease-out 1;
+}
+
+@keyframes klair-pop {
+  0% { transform: scale(0.4); opacity: 0; }
+  60% { transform: scale(1.25); opacity: 1; }
+  100% { transform: scale(1); }
+}
+
+#klair-marks .klair-card {
+  all: initial;
+  box-sizing: border-box;
+  position: absolute;
+  top: -6px;
+  left: 28px;
+  display: none;
+  flex-direction: column;
+  gap: 6px;
+  width: 270px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: #fff7f6;
+  border: 1px solid #efcfcb;
+  box-shadow: 0 8px 24px rgba(45, 49, 40, 0.18);
+  color: #2d3128;
+  font: 500 13.5px/1.45 -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;
+}
+
+#klair-marks .klair-mark.flip .klair-card {
+  left: auto;
+  right: 28px;
+}
+
+/* An open note sits above the other badges. */
+#klair-marks .klair-mark:hover,
+#klair-marks .klair-mark.open {
+  z-index: 1;
+}
+
+#klair-marks .klair-mark:hover .klair-card,
+#klair-marks .klair-mark.open .klair-card {
+  display: flex;
+}
+
+#klair-marks .klair-label {
+  all: initial;
+  color: #a8463d;
+  font: 800 10.5px/1 -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+#klair-marks .klair-note {
+  all: initial;
+  color: #2d3128;
+  font: 500 13.5px/1.45 -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;
+}
+
+#klair-marks .klair-clear {
+  all: initial;
+  align-self: flex-start;
+  color: #686d60;
+  font: 600 12px/1.4 -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+#klair-marks .klair-clear:hover {
+  color: #2d3128;
+}

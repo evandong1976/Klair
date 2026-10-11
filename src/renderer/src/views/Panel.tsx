@@ -512,6 +512,12 @@ function AnswerView({
           <PixelLabel>{label}</PixelLabel>
           <h1 className="m-0 text-[20px] font-extrabold">{answer.title}</h1>
           {answer.basedOn ? <span className="text-[13px] text-ink-3">{answer.basedOn}</span> : null}
+          {answer.highlighted ? (
+            <span className="text-[13px] font-bold text-rose-text">
+              Marked {answer.highlighted} passage{answer.highlighted === 1 ? '' : 's'} on the page;
+              hover the numbers in Chrome for notes
+            </span>
+          ) : null}
           <SourceChips sources={answer.sources} />
         </div>
         <div className="flex-none flex gap-1.5">

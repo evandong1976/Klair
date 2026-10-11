@@ -28,6 +28,7 @@ import { DownloadWatcher, type Download } from './downloads'
 import { extractText, fileKind, imageForModel } from './files'
 import * as store from './local'
 import { answerToText, runAssistance } from './execute'
+import { pickHighlights, samePage, type HighlightSet } from './highlights'
 import { lastHealth, runHealth } from './health'
 import { cancelIndex, scheduleIndex } from './indexer'
 import {
@@ -93,6 +94,9 @@ let staleTimer: NodeJS.Timeout | null = null
 // note model with each new screenshot, which says whether the screenshot shows it.
 const LIVE_PAGE_MS = 30 * 60_000
 let livePage: (PageContext & { id: number; at: number }) | null = null
+// Passages marked on a Chrome page for the latest answer about it (highlights.ts). The
+// extension asks for them by URL; a new answer, project or session clears them.
+let pageHighlights: HighlightSet | null = null
 
 // ------------------------------------------------------------------ helpers
 
@@ -203,6 +207,7 @@ async function enterProject(p: { id: number; name: string; slot: number | null }
   captures.clear()
   notePromises.clear()
   livePage = null
+  pageHighlights = null
   currentTopic = null
   notedThumb = null
   core.resetContext()
@@ -376,6 +381,7 @@ export async function endSession(): Promise<void> {
   sessionId = null
   projectId = null
   livePage = null
+  pageHighlights = null
   core.resetContext()
   setState({
     session: null,
@@ -1194,6 +1200,7 @@ async function execute(run: {
   const abort = new AbortController()
   exec = { abort, token }
   const live = (): boolean => token === execToken && !abort.signal.aborted
+  pageHighlights = null
 
   const base: AnswerState = {
     actionId: `pending-${token}`,
@@ -1319,6 +1326,7 @@ async function execute(run: {
       reshape: result.output.reshape
     }
     setState({ answer: done, lastAnswerTitle: result.output.title })
+    if (sid && img.page) void markPage(sid, run.task, img.page, result.output, live, done.actionId)
     if (sid && actionId) {
       const text = answerToText(result.output)
       await store.finishAction(actionId, {
@@ -1383,6 +1391,31 @@ async function execute(run: {
     core.executionFinished()
     if (exec?.token === token) exec = null
   }
+}
+
+/** Mark the passages of the page an answer was about, for the Chrome extension to show. */
+async function markPage(
+  sid: number,
+  task: string,
+  page: PageContext,
+  output: AnswerOutput,
+  live: () => boolean,
+  actionId: string
+): Promise<void> {
+  try {
+    const set = await pickHighlights({ answer: answerToText(output), task, page, projectId: sid })
+    if (!set || !live() || projectId !== sid) return
+    pageHighlights = set
+    const cur = getState().answer
+    if (cur?.actionId === actionId) setState({ answer: { ...cur, highlighted: set.items.length } })
+  } catch (err) {
+    console.warn('page highlights failed:', (err as Error).message)
+  }
+}
+
+/** The passages to mark on this page, if the latest answer was about it. */
+export function pageHighlightsFor(url: string): HighlightSet | null {
+  return pageHighlights && samePage(pageHighlights.url, url) ? pageHighlights : null
 }
 
 /** Abort the running request; late events are suppressed by the token check. */

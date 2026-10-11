@@ -1,5 +1,6 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'http'
 import { z } from 'zod'
+import type { HighlightSet } from './highlights'
 
 // The local endpoint the Chrome extension (extension/) talks to. It listens on
 // 127.0.0.1 only. A request must carry either the extension's own origin
@@ -12,6 +13,8 @@ import { z } from 'zod'
 //   GET  /v1/status   → { app: 'klair', session, observing }   (extension heartbeat)
 //   POST /v1/page     ← { url, title, text, description?, truncated? }
 //                     → 200 { stored } · 409 { reason } when no session is observing
+//   GET  /v1/highlights?url=…  → { session, id, items: [{ quote, note }] } for that
+//                     page; id null and no items when there are none (highlights.ts)
 
 /** Pinned by the "key" in extension/manifest.json. */
 export const KLAIR_EXTENSION_ID = 'jndibkpbjoldneahpgmofeoekkpeaepo'
@@ -33,6 +36,8 @@ export type BrowserPage = z.infer<typeof pageSchema>
 export interface BridgeHandlers {
   onPage(page: BrowserPage): Promise<{ stored: boolean; reason?: string }>
   status(): { session: boolean; observing: boolean }
+  /** Passages to mark on this page, if Klair has any for it. */
+  highlights?(url: string): HighlightSet | null
 }
 
 export interface BridgeInfo {
@@ -123,6 +128,12 @@ export class Bridge {
     if (req.method === 'OPTIONS') return this.send(res, 204)
     if (req.method === 'GET' && path === '/v1/status') {
       return this.send(res, 200, { app: 'klair', ...this.handlers.status() })
+    }
+    if (req.method === 'GET' && path === '/v1/highlights') {
+      const url = new URL(req.url ?? '', 'http://127.0.0.1').searchParams.get('url') ?? ''
+      const set = /^https?:/.test(url) ? (this.handlers.highlights?.(url) ?? null) : null
+      const session = this.handlers.status().session
+      return this.send(res, 200, { session, id: set?.id ?? null, items: set?.items ?? [] })
     }
     if (req.method === 'POST' && path === '/v1/page') {
       let raw: string

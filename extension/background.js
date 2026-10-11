@@ -1,7 +1,8 @@
 // Klair for Chrome: background worker.
 // Sends pages from the content script to the Klair app on this Mac (a local endpoint on
-// 127.0.0.1, see src/main/bridge.ts in the Klair repo), and checks in every minute so
-// Klair's Start window can show the extension as connected. Klair only keeps pages
+// 127.0.0.1, see src/main/bridge.ts in the Klair repo), fetches the passages Klair marked
+// on the tab on screen, and checks in every minute so Klair's Start window can show the
+// extension as connected. Klair only keeps pages
 // while a session is observing; otherwise it answers 409 and the page is dropped.
 
 const KLAIR = 'http://127.0.0.1:47821'
@@ -45,7 +46,23 @@ async function checkIn() {
   return out
 }
 
+/** Passages Klair marked on this page after an answer about it (none if it has none). */
+async function highlightsFor(url) {
+  if (!(await enabled())) return { off: true }
+  try {
+    const res = await fetch(`${KLAIR}/v1/highlights?url=${encodeURIComponent(url)}`)
+    return res.ok ? await res.json() : { offline: true }
+  } catch {
+    return { offline: true } // Klair isn't running
+  }
+}
+
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  if (msg?.type === 'klair:highlights') {
+    if (!sender.tab || sender.frameId !== 0 || sender.tab.incognito || !sender.url) return false
+    highlightsFor(sender.url).then(sendResponse)
+    return true // answer asynchronously
+  }
   if (msg?.type === 'klair:page') {
     // Top frame of a normal tab only; never incognito.
     if (sender.tab && sender.frameId === 0 && !sender.tab.incognito) void sendPage(msg.page)

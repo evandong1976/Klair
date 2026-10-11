@@ -64,7 +64,8 @@ app.whenReady().then(async () => {
   const bridge = new Bridge(
     {
       onPage: (page) => c.onBrowserPage(page),
-      status: () => ({ session: !!getState().session, observing: getState().observing === 'on' })
+      status: () => ({ session: !!getState().session, observing: getState().observing === 'on' }),
+      highlights: (url) => c.pageHighlightsFor(url)
     },
     { port: config.bridgePort, extensionId: config.extensionId }
   )

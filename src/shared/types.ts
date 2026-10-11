@@ -45,6 +45,8 @@ export interface AnswerState {
   reshape: string[]
   sources: Provenance[]
   historyUnavailable: boolean
+  /** Passages Klair marked on the Chrome page this answer is about (the extension shows them). */
+  highlighted?: number
   error?: string
 }
 
