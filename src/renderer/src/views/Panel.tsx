@@ -408,16 +408,29 @@ function IdeasView({
       {state.downloads.length ? <DownloadOfferCards offers={state.downloads} /> : null}
       {state.selection ? <SelectionChip selection={state.selection} /> : null}
       {idle ? (
-        <div className="flex flex-col gap-2">
+        <div className="flex flex-col gap-2.5">
           <PixelLabel>Where you are</PixelLabel>
           <h1 className="m-0 text-[19px] font-extrabold leading-[1.3]">
-            Nothing to work with here
+            {state.idleWhy === 'unrelated'
+              ? `Not part of ${state.project?.name ?? 'this project'}`
+              : 'Nothing on screen to work with'}
           </h1>
           <p className="m-0 text-[14.5px] leading-[1.5] text-ink-2 text-pretty">
-            Klair doesn&apos;t see a page, document or anything else to help with on this screen, so
-            it hasn&apos;t made any ideas. Open what you&apos;re working on, select an area with ⌘S,
-            or ask below.
+            {state.idleWhy === 'unrelated'
+              ? `Klair sees ${state.idleSeen ? `“${state.idleSeen}”` : 'this screen'} and doesn\u2019t think it belongs to ${state.project?.name ?? 'the project'}, so it has no ideas for it.`
+              : 'Klair doesn\u2019t see a page, document or window with anything in it.'}
           </p>
+          {state.idleWhy === 'unrelated' ? (
+            <div className="flex justify-start">
+              <Button
+                onClick={() => void klair.includeScreen()}
+                title="Klair will take this screen as part of the project and learn from it"
+                className="h-9 text-[13px]"
+              >
+                It is part of this project
+              </Button>
+            </div>
+          ) : null}
         </div>
       ) : set ? (
         <div className="flex flex-col gap-2">

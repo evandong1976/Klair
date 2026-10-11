@@ -224,7 +224,11 @@ const ADDED_COLUMNS: [table: string, column: string, type: string][] = [
   // 'auto' (the capture loop) or 'selection' (an area the user selected with ⌘S).
   ['captures', 'source', "text not null default 'auto'"],
   // The added file a note is about (files).
-  ['notes', 'file_id', 'integer references files(id) on delete set null']
+  ['notes', 'file_id', 'integer references files(id) on delete set null'],
+  // What the project is, in a few sentences, and how many notes that was written from
+  // (brief.ts). Kept on this Mac only: it is a working summary, rebuilt from the notes.
+  ['projects', 'brief', 'text'],
+  ['projects', 'brief_notes', 'integer not null default 0']
 ]
 
 const CONTEXT_TABLES = [
@@ -494,6 +498,26 @@ export async function touchProject(id: number): Promise<void> {
   run(
     `update projects set last_used_at = ${NOW}, upload_status = 'local', upload_error = null where id = ?`,
     id
+  )
+}
+
+/** The project's brief and how many observed notes it was last written from. */
+export function getBrief(projectId: number): { brief: string; notes: number } {
+  const r = one(`select brief, brief_notes from projects where id = ?`, projectId)
+  return { brief: String(r?.brief ?? ''), notes: Number(r?.brief_notes ?? 0) }
+}
+
+export function setBrief(projectId: number, brief: string, notes: number): void {
+  run(`update projects set brief = ?, brief_notes = ? where id = ?`, brief, notes, projectId)
+}
+
+/** How many screens have been noted into the project (answers Klair wrote don't count). */
+export function observedNoteCount(projectId: number): number {
+  return Number(
+    one(
+      `select count(*) as n from notes where project_id = ? and provenance = 'observed'`,
+      projectId
+    )?.n ?? 0
   )
 }
 

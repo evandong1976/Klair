@@ -30,6 +30,8 @@ let state: KlairState = {
   selection: null,
   selecting: false,
   idle: false,
+  idleWhy: null,
+  idleSeen: null,
   downloads: []
 }
 

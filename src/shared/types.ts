@@ -133,6 +133,10 @@ export interface KlairState {
    * flower greys out and no ideas are made or offered until there is something again.
    */
   idle: boolean
+  /** Why it is idle: nothing on screen to work with, or a screen that isn't this project's work. */
+  idleWhy: 'empty' | 'unrelated' | null
+  /** What Klair saw there, in the note's words (e.g. "Spotify: music app"). */
+  idleSeen: string | null
   /** Files that finished downloading during the session; nothing is read until Add. */
   downloads: DownloadOffer[]
 }
@@ -251,6 +255,10 @@ export interface KlairApi {
   retry(): Promise<void>
   dismissNotice(): Promise<void>
   dismissIdeas(): Promise<void>
+  /** Put the "N ideas" pill away. The ideas themselves stay, one tap of fn away. */
+  hideNudge(): Promise<void>
+  /** The screen Klair went quiet on is part of the project after all: take it as work. */
+  includeScreen(): Promise<void>
 
   setPanelSize(width: number, height: number): Promise<void>
   setFlowerInteractive(interactive: boolean): Promise<void>
@@ -324,6 +332,8 @@ export const KLAIR_INVOKE_METHODS: KlairInvokeMethod[] = [
   'retry',
   'dismissNotice',
   'dismissIdeas',
+  'hideNudge',
+  'includeScreen',
   'setPanelSize',
   'setFlowerInteractive',
   'startSession',
