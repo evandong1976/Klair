@@ -1,12 +1,14 @@
 # How Klair uses TigerData
 
-A running session is saved on the Mac first, in SQLite (`src/main/local.ts`), so capturing never waits on the network. When the session ends, `src/main/upload.ts` copies it to TigerData in full, and from then on TigerData is where the session is kept. It does work Klair couldn't do as well with plain local storage: a time-series of what's on screen, live rollups that power **Session insights**, automatic retention, ranked keyword search across sessions (and the fallback when Graphify is unavailable), and per-developer forks.
+A running session is saved on the Mac first, in SQLite (`src/main/local.ts`), so capturing never waits on the network. When the session ends, `src/main/upload.ts` copies it to TigerData in full, and from then on TigerData is where the session is kept. It does work Klair couldn't do as well with plain local storage: a time-series of what's on screen, live rollups that power **Session insights**, automatic retention, a ranked keyword-search index over every uploaded note, and per-developer forks.
 
 Every feature below is created by `migrate()` in `src/main/db.ts`, one step at a time. A feature the service lacks is skipped, logged, and reported on the Start window.
 
 ## 1. Session records, uploaded when a session ends
 
-`sessions`, `captures`, `suggestion_sets`, `actions` and `notes` hold every session, screenshot reference, idea set, picked action and result, with provenance. Screenshot image files stay on the Mac; rows store their path.
+`sessions`, `captures`, `suggestion_sets`, `actions` and `notes` hold every session, screenshot reference, idea set, picked action and result, with provenance. `pages` holds the full text of Chrome pages the extension sent, and `files` the extracted text of files the user added from Downloads. Screenshot images and added files stay on the Mac; rows store their path.
+
+Columns added for the newer features (all additive): `captures.source` (`'auto'` or `'selection'`, an area the user selected), `captures.page_id` (the Chrome page a screenshot shows), `notes.file_id` (the added file a note is about), and `local_id` on every uploaded table.
 
 **While a session runs** these rows (and `screen_activity`) are written to the same tables in SQLite on the Mac. Save order there: PNG file → `captures` row (`status = 'pending'`) → `committed`. Only committed captures get notes and are indexed. On startup `reconcileLocal()` deletes orphan files and resolves half-written rows.
 
@@ -76,7 +78,7 @@ select add_retention_policy('screen_activity', drop_after => interval '14 days',
 
 ## 5. Search over notes: BM25 via `pg_textsearch`
 
-Observed notes (one per changed screen) and Klair's own answers (marked `provenance = 'assistant'`) go in `notes`. TigerData search covers earlier, uploaded sessions; the running session (and any not yet uploaded) is searched with SQLite FTS5 (BM25) on the Mac.
+Observed notes (one per changed screen) and Klair's own answers (marked `provenance = 'assistant'`) go in `notes`. Answers draw only on the session the user is in, so the context for ideas and answers comes from SQLite FTS5 (BM25) on the Mac and that session's Graphify graph. The TigerData index below makes uploaded notes searchable across sessions (`searchNotes()` in `db.ts`), for tooling and a future resume or cross-session feature.
 
 ```sql
 create extension if not exists pg_textsearch;
@@ -88,7 +90,7 @@ order by body <@> to_bm25query($1, 'notes_body_bm25')
 limit 4;
 ```
 
-If `pg_textsearch` isn't available, Klair uses Postgres full-text search instead (`to_tsvector` GIN index + `websearch_to_tsquery`); the Start window says which one is active. `retrieve.ts` merges these "Earlier session" hits with local "Earlier tab" hits and Graphify's graph context. Any one source failing still leaves the others.
+If `pg_textsearch` isn't available, Klair uses Postgres full-text search instead (`to_tsvector` GIN index + `websearch_to_tsquery`); the Start window says which one is active.
 
 ## 6. Forks for building and the demo
 

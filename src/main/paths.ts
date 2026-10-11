@@ -30,6 +30,13 @@ export function notesDir(sessionId: number): string {
   return d
 }
 
+/** Copies of files the user added from Downloads. */
+export function filesDir(sessionId: number): string {
+  const d = join(sessionDir(sessionId), 'files')
+  mkdirSync(d, { recursive: true })
+  return d
+}
+
 export function graphPath(sessionId: number): string {
   return join(sessionDir(sessionId), 'graphify-out', 'graph.json')
 }

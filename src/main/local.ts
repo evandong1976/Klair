@@ -50,6 +50,8 @@ export interface NoteHit {
   createdAt: string
   /** local: this Mac's SQLite store (ids are local); remote: TigerData (ids are TigerData's). */
   origin: 'local' | 'remote'
+  /** Set when the note is a file the user added from Downloads. */
+  fileName?: string | null
 }
 
 const NOW = `strftime('%Y-%m-%dT%H:%M:%fZ', 'now')`
@@ -159,6 +161,25 @@ create table if not exists pages (
 );
 create index if not exists pages_session_idx on pages (session_id, captured_at);
 create unique index if not exists pages_hash_idx on pages (session_id, text_hash);
+-- Files the user chose to add from Downloads (downloads.ts, files.ts). The file is
+-- copied into the session folder; body is its extracted text (or an image description).
+create table if not exists files (
+  id integer primary key autoincrement,
+  session_id integer not null references sessions(id) on delete cascade,
+  added_at text not null default (${NOW}),
+  name text not null,
+  kind text not null,
+  size integer not null,
+  original_path text not null,
+  stored_path text,
+  sha1 text,
+  body text not null default '',
+  extract_status text not null,
+  truncated integer not null default 0,
+  note_path text,
+  index_status text not null default 'pending'
+);
+create index if not exists files_session_idx on files (session_id, added_at);
 -- TigerData sessions deleted here while TigerData was unreachable; removed on the next upload run.
 create table if not exists pending_remote_deletes (remote_id integer primary key);
 `
@@ -170,7 +191,9 @@ const ADDED_COLUMNS: [table: string, column: string, type: string][] = [
   // 'auto' (the capture loop) or 'selection' (an area the user selected with ⌘S).
   ['captures', 'source', "text not null default 'auto'"],
   // 1–9: the session's place on the fn 1–9 / ⌃⌥1–9 switcher. Null when all nine are taken.
-  ['sessions', 'slot', 'integer']
+  ['sessions', 'slot', 'integer'],
+  // The added file a note is about (files).
+  ['notes', 'file_id', 'integer references files(id) on delete set null']
 ]
 
 function addColumns(d: DatabaseSync): void {
@@ -431,6 +454,7 @@ export interface SessionExport {
   notes: Row[]
   activity: Row[]
   pages: Row[]
+  files: Row[]
 }
 
 /** Every row of one session, read in a single snapshot, for the TigerData upload. */
@@ -454,6 +478,10 @@ export function exportSession(id: number): SessionExport | null {
         (r) => ({ ...r, changed: Number(r.changed) === 1 })
       ),
       pages: all(`select * from pages where session_id = ? order by id`, id).map((r) => ({
+        ...r,
+        truncated: Number(r.truncated) === 1
+      })),
+      files: all(`select * from files where session_id = ? order by id`, id).map((r) => ({
         ...r,
         truncated: Number(r.truncated) === 1
       }))
@@ -538,6 +566,102 @@ export async function setPageIndexStatus(
   if (ids.length === 0) return
   run(
     `update pages set index_status = ? where id in (select value from json_each(?))`,
+    status,
+    JSON.stringify(ids)
+  )
+}
+
+// ---------------------------------------------------------------- files (from Downloads)
+
+export interface FileRow {
+  id: number
+  sessionId: number
+  addedAt: string
+  name: string
+  kind: string
+  size: number
+  storedPath: string | null
+  body: string
+  extractStatus: string
+  truncated: boolean
+}
+
+function fileRow(r: Row): FileRow {
+  return {
+    id: Number(r.id),
+    sessionId: Number(r.session_id),
+    addedAt: String(r.added_at),
+    name: String(r.name),
+    kind: String(r.kind),
+    size: Number(r.size),
+    storedPath: (r.stored_path as string) ?? null,
+    body: String(r.body ?? ''),
+    extractStatus: String(r.extract_status),
+    truncated: Number(r.truncated) === 1
+  }
+}
+
+export async function insertFile(f: {
+  sessionId: number
+  name: string
+  kind: string
+  size: number
+  originalPath: string
+  storedPath: string | null
+  sha1: string | null
+  body: string
+  extractStatus: string
+  truncated: boolean
+}): Promise<number> {
+  return run(
+    `insert into files (session_id, name, kind, size, original_path, stored_path, sha1, body, extract_status, truncated)
+     values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    f.sessionId,
+    f.name,
+    f.kind,
+    f.size,
+    f.originalPath,
+    f.storedPath,
+    f.sha1,
+    f.body,
+    f.extractStatus,
+    f.truncated ? 1 : 0
+  )
+}
+
+export async function getFile(id: number): Promise<FileRow | null> {
+  const r = one(`select * from files where id = ?`, id)
+  return r ? fileRow(r) : null
+}
+
+/** The file most recently added to a session, if it was added after `sinceIso`. */
+export async function latestFile(sessionId: number, sinceIso: string): Promise<FileRow | null> {
+  const r = one(
+    `select * from files where session_id = ? and added_at >= ? order by id desc limit 1`,
+    sessionId,
+    sinceIso
+  )
+  return r ? fileRow(r) : null
+}
+
+export async function setFileNotePath(id: number, notePath: string): Promise<void> {
+  run(`update files set note_path = ? where id = ?`, notePath, id)
+}
+
+export async function pendingIndexFiles(sessionId: number): Promise<number[]> {
+  return all(
+    `select id from files where session_id = ? and note_path is not null and index_status <> 'indexed'`,
+    sessionId
+  ).map((r) => Number(r.id))
+}
+
+export async function setFileIndexStatus(
+  ids: number[],
+  status: 'pending' | 'indexed' | 'failed'
+): Promise<void> {
+  if (ids.length === 0) return
+  run(
+    `update files set index_status = ? where id in (select value from json_each(?))`,
     status,
     JSON.stringify(ids)
   )
@@ -648,15 +772,17 @@ export async function insertNote(n: {
   provenance: 'observed' | 'assistant'
   topic?: string | null
   body: string
+  fileId?: number | null
 }): Promise<number> {
   return run(
-    `insert into notes (session_id, capture_id, action_id, provenance, topic, body) values (?, ?, ?, ?, ?, ?)`,
+    `insert into notes (session_id, capture_id, action_id, provenance, topic, body, file_id) values (?, ?, ?, ?, ?, ?, ?)`,
     n.sessionId,
     n.captureId ?? null,
     n.actionId ?? null,
     n.provenance,
     n.topic ?? null,
-    n.body
+    n.body,
+    n.fileId ?? null
   )
 }
 
@@ -680,8 +806,10 @@ export async function searchNotes(
   const match = ftsQuery(query)
   if (!match) return []
   return all(
-    `select n.id, n.session_id, n.capture_id, n.provenance, n.topic, n.body, n.created_at
+    `select n.id, n.session_id, n.capture_id, n.provenance, n.topic, n.body, n.created_at,
+            fl.name as file_name
      from notes_fts f join notes n on n.id = f.rowid
+       left join files fl on fl.id = n.file_id
      where notes_fts match ?
        and n.session_id = ?
        and (? is null or n.capture_id is not ?)
@@ -699,7 +827,8 @@ export async function searchNotes(
     topic: (r.topic as string) ?? null,
     body: String(r.body),
     createdAt: String(r.created_at),
-    origin: 'local' as const
+    origin: 'local' as const,
+    fileName: (r.file_name as string) ?? null
   }))
 }
 
@@ -861,6 +990,10 @@ export async function timeline(sessionId: number): Promise<TimelineItem[]> {
     `select captured_at, title, url, length(body) as chars from pages where session_id = ? order by id limit 40`,
     sessionId
   )
+  const added = all(
+    `select added_at, name, kind, extract_status from files where session_id = ? order by id limit 40`,
+    sessionId
+  )
   const items: TimelineItem[] = [
     ...seen.map((r, i) => {
       const n = Number(r.n)
@@ -876,6 +1009,15 @@ export async function timeline(sessionId: number): Promise<TimelineItem[]> {
       kind: 'seen' as const,
       title: 'You selected an area of the screen',
       detail: String(r.note)
+    })),
+    ...added.map((r) => ({
+      at: String(r.added_at),
+      kind: 'switched' as const,
+      title: `Added "${r.name}" from Downloads`,
+      detail:
+        r.extract_status === 'ok'
+          ? `${r.kind} · contents read`
+          : `${r.kind} · ${r.extract_status === 'unsupported' ? 'kept by name only' : 'contents not readable'}`
     })),
     ...pages.map((r) => ({
       at: String(r.captured_at),

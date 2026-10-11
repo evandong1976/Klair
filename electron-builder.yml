@@ -28,6 +28,7 @@ mac:
   extendInfo:
     - LSUIElement: true
     - NSAppleEventsUsageDescription: Klair reads the front app, window title and browser URL so it can link related tabs (optional).
+    - NSDownloadsFolderUsageDescription: Klair notices files you download during a session and asks whether to add them to it.
   notarize: false
 dmg:
   artifactName: ${name}-${version}.${ext}

@@ -1,5 +1,7 @@
 # Klair build plan
 
+> **Historical.** This is the first build session's plan. Several decisions changed since (sessions are SQLite-first and uploaded to TigerData when they end, change detection uses a 64×40 share-of-screen check, answers are text only, and the extension, area selection and downloads were added). See `README.md` for how Klair works now and the decisions log in `docs/PROGRESS.md`.
+
 Written by the build session on 2026-10-10. Sources: `BUILD_PROMPT.md`, `MEGA_PROMPT.md`, `design/DESIGN.md`, and the scaffold.
 
 ## Where the build runs

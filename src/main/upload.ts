@@ -89,17 +89,32 @@ async function copy(client: PoolClient, data: local.SessionExport): Promise<numb
     }))
   )
 
+  const files = await insertRows(
+    client,
+    `insert into files (session_id, added_at, name, kind, size, original_path, stored_path, sha1,
+       body, extract_status, truncated, note_path, index_status, local_id)
+     select ${sid}, added_at, name, kind, size, original_path, stored_path, sha1,
+       body, extract_status, truncated, note_path, index_status, id
+     from jsonb_to_recordset($1::jsonb) as x(id bigint, added_at timestamptz, name text, kind text,
+       size bigint, original_path text, stored_path text, sha1 text, body text,
+       extract_status text, truncated boolean, note_path text, index_status text)
+     returning id, local_id`,
+    data.files
+  )
+
   await insertRows(
     client,
-    `insert into notes (session_id, capture_id, action_id, provenance, topic, body, created_at, local_id)
-     select ${sid}, capture_id, action_id, provenance, topic, body, created_at, id
+    `insert into notes (session_id, capture_id, action_id, file_id, provenance, topic, body,
+       created_at, local_id)
+     select ${sid}, capture_id, action_id, file_id, provenance, topic, body, created_at, id
      from jsonb_to_recordset($1::jsonb) as x(id bigint, capture_id bigint, action_id bigint,
-       provenance text, topic text, body text, created_at timestamptz)
+       file_id bigint, provenance text, topic text, body text, created_at timestamptz)
      returning id, local_id`,
     data.notes.map((r) => ({
       ...r,
       capture_id: remap(captures, r.capture_id),
-      action_id: remap(actions, r.action_id)
+      action_id: remap(actions, r.action_id),
+      file_id: remap(files, r.file_id)
     }))
   )
 
@@ -138,7 +153,7 @@ async function doUpload(localId: number): Promise<boolean> {
     local.setUploadStatus(localId, 'synced', { remoteId })
     console.log(
       `tigerdata: uploaded session ${localId} → ${remoteId} (${data.captures.length} captures, ` +
-        `${data.pages.length} pages, ` +
+        `${data.pages.length} pages, ${data.files.length} files, ` +
         `${data.notes.length} notes, ${data.activity.length} activity rows, ${Date.now() - t} ms)`
     )
     if (capabilities.continuousAggregate) {

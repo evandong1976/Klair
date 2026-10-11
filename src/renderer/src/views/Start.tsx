@@ -243,7 +243,8 @@ export function StartWindow(): React.JSX.Element {
           <p className="m-0 text-[12.5px] leading-[1.5] text-ink-3 text-pretty">
             Klair sends each new screen to an AI model (via OpenRouter) to take notes, and the
             relevant notes when it makes ideas and answers. With the Chrome extension, the full text
-            of the page you&apos;re on goes with them. Pause anytime with fn P or ⌃⌥P.
+            of the page you&apos;re on goes with them. When you download a file, Klair asks before
+            adding it. Pause anytime with fn P or ⌃⌥P.
           </p>
         </>
       ) : null}

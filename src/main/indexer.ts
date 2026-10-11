@@ -1,7 +1,9 @@
 import { config } from './config'
 import {
   pendingIndexCaptures,
+  pendingIndexFiles,
   pendingIndexPages,
+  setFileIndexStatus,
   setIndexStatus,
   setPageIndexStatus
 } from './local'
@@ -57,13 +59,15 @@ async function runIndex(sessionId: number): Promise<void> {
   if (j.cancelled) return
   let ids: number[] = []
   let pageIds: number[] = []
+  let fileIds: number[] = []
   try {
     ids = await pendingIndexCaptures(sessionId)
     pageIds = await pendingIndexPages(sessionId)
+    fileIds = await pendingIndexFiles(sessionId)
   } catch {
     return
   }
-  if (ids.length === 0 && pageIds.length === 0) return
+  if (ids.length === 0 && pageIds.length === 0 && fileIds.length === 0) return
   j.newNotes = 0
   j.running = new AbortController()
   try {
@@ -71,6 +75,7 @@ async function runIndex(sessionId: number): Promise<void> {
     if (j.cancelled) return
     await setIndexStatus(ids, 'indexed')
     await setPageIndexStatus(pageIds, 'indexed')
+    await setFileIndexStatus(fileIds, 'indexed')
     lastResult = {
       at: new Date().toISOString(),
       ok: true,
@@ -80,6 +85,7 @@ async function runIndex(sessionId: number): Promise<void> {
     if (j.cancelled) return
     await setIndexStatus(ids, 'failed').catch(() => undefined)
     await setPageIndexStatus(pageIds, 'failed').catch(() => undefined)
+    await setFileIndexStatus(fileIds, 'failed').catch(() => undefined)
     lastResult = {
       at: new Date().toISOString(),
       ok: false,

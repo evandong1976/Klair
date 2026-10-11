@@ -23,6 +23,8 @@ const RESHAPE = ['Shorter', 'Simpler', 'More detail']
 
 /** Characters of the on-screen Chrome page sent with an answer request (~15k tokens). */
 const PAGE_CHARS_FOR_ANSWER = 60_000
+/** Characters of a recently added file sent with an answer request (~10k tokens). */
+const FILE_CHARS_FOR_ANSWER = 40_000
 
 export interface ExecuteInput {
   sessionId: number
@@ -36,6 +38,8 @@ export interface ExecuteInput {
   topic: string
   /** Full text of the Chrome page on screen (Chrome extension), when known. */
   page?: PageContext | null
+  /** A file the user recently added from Downloads. */
+  file?: { name: string; kind: string; body: string } | null
   retrieved: Retrieved
   previous?: AnswerOutput | null // for reshape
   signal: AbortSignal
@@ -58,6 +62,12 @@ export async function runAssistance(input: ExecuteInput): Promise<ExecuteResult>
   const text = [
     `Task (picked by the user, kind: ${input.kind}):\n${input.task}`,
     fenceUntrusted('current-screen', `Topic: ${input.topic}\n${input.note}`),
+    input.file
+      ? fenceUntrusted(
+          'added-file',
+          `A file the user added to the session a few minutes ago. Use it when the task is about it.\nName: ${input.file.name} (${input.file.kind})\n\n${input.file.body.slice(0, FILE_CHARS_FOR_ANSWER)}`
+        )
+      : '',
     input.selection && input.png
       ? 'The attached image is an area of the screen the user selected on purpose: answer about what is in it.'
       : '',
@@ -77,13 +87,15 @@ export async function runAssistance(input: ExecuteInput): Promise<ExecuteResult>
     .filter(Boolean)
     .join('\n\n')
 
-  const basedOn = input.page
-    ? input.retrieved.text
-      ? 'Your screen, the full page and earlier notes'
-      : 'Your screen and the full page'
-    : input.retrieved.text
-      ? 'Your screen and earlier notes'
-      : 'Your screen'
+  // "Your screen, the full page, your file and earlier notes"
+  const parts = [
+    'Your screen',
+    input.page ? 'the full page' : '',
+    input.file ? 'your file' : '',
+    input.retrieved.text ? 'earlier notes' : ''
+  ].filter(Boolean)
+  const basedOn =
+    parts.length > 1 ? `${parts.slice(0, -1).join(', ')} and ${parts.at(-1)}` : parts[0]
   const { markdown, firstMs, usage } = await withoutReasoning(config.answerModel, async (opts) => {
     // streamText reports a failed request through onError, not by throwing.
     let failed: unknown = null

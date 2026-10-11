@@ -89,7 +89,9 @@ const handlers: Handlers = {
       height: Number(rect?.height)
     }),
   cancelSelection: async () => c.cancelSelection(),
-  clearSelection: async () => c.clearSelection()
+  clearSelection: async () => c.clearSelection(),
+  addDownload: (id) => c.addDownload(String(id)),
+  skipDownload: async (id) => c.skipDownload(String(id))
 }
 
 export function registerIpc(): void {

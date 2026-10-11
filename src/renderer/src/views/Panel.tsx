@@ -10,6 +10,7 @@ import { Flower } from '../components/Flower'
 import { Button, CloseButton, Key, PixelLabel, PixelProgress, SourceChips } from '../components/ui'
 import { useBloom } from '../lib/useBloom'
 import { isMod, klair, useKlairState } from '../lib/useKlair'
+import { DownloadOfferCards } from './DownloadOffers'
 import { CORNER_CELL, CORNER_INSET, CORNER_RES } from './FlowerWindow'
 import { NoticeCard } from './NoticeCard'
 import { ShortcutsView } from './Shortcuts'
@@ -343,6 +344,7 @@ function IdeasView({
   }
   return (
     <>
+      {state.downloads.length ? <DownloadOfferCards offers={state.downloads} /> : null}
       {state.selection ? <SelectionChip selection={state.selection} /> : null}
       {set ? (
         <div className="flex flex-col gap-2">

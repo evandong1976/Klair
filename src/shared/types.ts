@@ -112,6 +112,19 @@ export interface KlairState {
    */
   selection: { captureId: number; at: string; width: number; height: number } | null
   selecting: boolean
+  /** Files that finished downloading during the session; nothing is read until Add. */
+  downloads: DownloadOffer[]
+}
+
+export interface DownloadOffer {
+  id: string
+  name: string
+  size: number
+  /** pdf | document | slides | spreadsheet | text | image | other */
+  kind: string
+  at: string
+  status: 'offered' | 'adding' | 'added' | 'failed'
+  detail?: string
 }
 
 /** A rectangle in the selection overlay, in its CSS pixels (= screen points). */
@@ -220,6 +233,11 @@ export interface KlairApi {
   cancelSelection(): Promise<void>
   /** Unpin the selection: ideas and answers follow the screen again. */
   clearSelection(): Promise<void>
+
+  /** Copy a finished download into the session and read it. */
+  addDownload(id: string): Promise<void>
+  /** Leave it out of the session. */
+  skipDownload(id: string): Promise<void>
 }
 
 export type KlairInvokeMethod = Exclude<keyof KlairApi, 'onState'>
@@ -258,7 +276,9 @@ export const KLAIR_INVOKE_METHODS: KlairInvokeMethod[] = [
   'startSelection',
   'finishSelection',
   'cancelSelection',
-  'clearSelection'
+  'clearSelection',
+  'addDownload',
+  'skipDownload'
 ]
 
 export const STATE_CHANNEL = 'klair:state'

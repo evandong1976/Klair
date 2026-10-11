@@ -3,6 +3,7 @@ import { Flower } from '../components/Flower'
 import { Key } from '../components/ui'
 import { klair, useKlairState } from '../lib/useKlair'
 import { prettyAccel } from '../../../shared/keys'
+import { DownloadOfferPill } from './DownloadOffers'
 
 // Top-right corner (Main.dc.html): the see-through flower, plus a pill when
 // there's something to say. The window is click-through except over the pill.
@@ -32,8 +33,12 @@ export function FlowerWindow(): React.JSX.Element | null {
   }, [])
 
   const open = s?.flower === 'open'
+  const offer = s?.downloads.at(-1) ?? null
   const hasPill =
-    !!s && s.flower !== 'off' && !open && (!!s.notice || s.observing === 'paused' || s.nudge)
+    !!s &&
+    s.flower !== 'off' &&
+    !open &&
+    (!!s.notice || s.observing === 'paused' || s.nudge || !!offer)
   useEffect(() => {
     // Never leave the corner clickable once the pill is gone.
     if (!hasPill) void klair.setFlowerInteractive(false)
@@ -73,6 +78,8 @@ export function FlowerWindow(): React.JSX.Element | null {
             : `Now in ${s.notice.detail}`}
         </span>
       )
+    } else if (offer) {
+      pill = <DownloadOfferPill offer={offer} hover={hover} />
     } else if (s.notice?.kind === 'stale') {
       pill = (
         <span className="surface flex items-center h-[42px] px-4 rounded-full text-[13.5px] font-semibold text-ink-2 opacity-80">

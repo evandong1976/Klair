@@ -37,6 +37,10 @@ export const config = {
   retrievalBudget: num('RETRIEVAL_BUDGET', 1500),
 
   activeWindow: pick('ACTIVE_WINDOW') === 'applescript',
+  /** Offer files that finish downloading during a session (KLAIR_WATCH_DOWNLOADS=off to stop). */
+  watchDownloads: pick('WATCH_DOWNLOADS') !== 'off',
+  /** Folder to watch; defaults to the user's Downloads folder. */
+  downloadsDir: pick('DOWNLOADS_DIR') ?? null,
   /** Local port the Chrome extension sends pages to (extension/background.js uses the same). */
   bridgePort: num('BRIDGE_PORT', DEFAULT_BRIDGE_PORT),
   /** Only this extension may send pages; the default is pinned by extension/manifest.json. */

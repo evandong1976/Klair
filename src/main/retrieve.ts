@@ -64,8 +64,9 @@ export async function retrieve(
       const key = h.body.slice(0, 120)
       if (seen.has(key)) continue
       seen.add(key)
-      const label =
-        h.provenance === 'assistant'
+      const label = h.fileName
+        ? `Your file · ${h.fileName.slice(0, 40)}`
+        : h.provenance === 'assistant'
           ? `Klair's earlier answer · ${timeLabel(h.createdAt)}`
           : `Earlier in this session · ${timeLabel(h.createdAt)}`
       sources.push({

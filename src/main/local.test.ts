@@ -146,3 +146,41 @@ test('selected areas are stored as selection captures', async () => {
   assert.equal(t.filter((i) => i.title.startsWith('Read')).length, 1)
   assert.equal(local.exportSession(id)?.captures.find((c) => c.id === cap)?.source, 'selection')
 })
+
+test('added files are stored, searchable by content and exported', async () => {
+  const id = await sessionWithNotes('theta')
+  const before = new Date(Date.now() - 1000).toISOString()
+  const fid = await local.insertFile({
+    sessionId: id,
+    name: 'adam-paper.pdf',
+    kind: 'pdf',
+    size: 120_000,
+    originalPath: '/Users/x/Downloads/adam-paper.pdf',
+    storedPath: '/tmp/adam-paper.pdf',
+    sha1: 'abc',
+    body: 'Adam combines momentum with per-parameter adaptive step sizes.',
+    extractStatus: 'ok',
+    truncated: false
+  })
+  await local.insertNote({
+    sessionId: id,
+    fileId: fid,
+    provenance: 'observed',
+    topic: 'adam-paper.pdf',
+    body: 'File "adam-paper.pdf": Adam combines momentum with adaptive step sizes.'
+  })
+  const hit = (await local.searchNotes('adaptive momentum', { sessionId: id })).find((h) =>
+    h.body.includes('adam-paper')
+  )
+  assert.equal(hit?.fileName, 'adam-paper.pdf')
+  assert.equal((await local.latestFile(id, before))?.name, 'adam-paper.pdf')
+  assert.equal(await local.latestFile(id, new Date(Date.now() + 60_000).toISOString()), null)
+  await local.setFileNotePath(fid, '/tmp/file.md')
+  assert.deepEqual(await local.pendingIndexFiles(id), [fid])
+  const data = local.exportSession(id)
+  assert.equal(data?.files[0].name, 'adam-paper.pdf')
+  assert.equal(data?.notes.find((n) => n.file_id === fid)?.topic, 'adam-paper.pdf')
+  assert.ok(
+    (await local.timeline(id)).some((t) => t.title === 'Added "adam-paper.pdf" from Downloads')
+  )
+})
