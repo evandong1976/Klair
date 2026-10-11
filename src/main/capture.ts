@@ -21,7 +21,7 @@ export interface Frame {
 // of 64×40 cells; a moved pointer, a clock tick or the panel opening changes under 0.5%.
 const THUMB_W = 64
 const THUMB_H = 40
-const CELL_DELTA = 24 // grey levels (0–255) a cell must move to count as changed
+const CELL_DELTA = 35 // grey levels (0–255) a cell must move to count as changed
 export const CHANGE_SHARE = 0.05 // share of cells that must change: "substantial"
 
 function grey(img: NativeImage): Uint8Array {
