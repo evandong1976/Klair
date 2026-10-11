@@ -4,8 +4,9 @@
 // Klair's Start window can show the extension as connected. Klair only keeps pages
 // while a session is observing; otherwise it answers 409 and the page is dropped.
 //
-// It also carries "select text, tap fn": while a page has text selected it waits on
-// Klair for the fn tap, then streams back the short version that replaces the text.
+// It also carries "hold fn, click a paragraph": the page can't see the fn key, so each
+// click on a paragraph asks Klair whether fn is held, and if it is, the short version
+// that replaces the paragraph is streamed back.
 
 const KLAIR = 'http://127.0.0.1:47821'
 
@@ -48,23 +49,13 @@ async function checkIn() {
   return out
 }
 
-// One held request per tab while it has text selected; aborted when the selection goes.
-const waiting = new Map()
-
-async function waitForFn(tabId) {
-  if (!(await enabled())) return { tap: false, off: true }
-  waiting.get(tabId)?.abort()
-  const abort = new AbortController()
-  waiting.set(tabId, abort)
+async function fnHeld() {
+  if (!(await enabled())) return { held: false }
   try {
-    const res = await fetch(`${KLAIR}/v1/fn`, { method: 'POST', signal: abort.signal })
-    if (!res.ok) return { tap: false, offline: true }
-    return { tap: !!(await res.json()).tap }
+    const res = await fetch(`${KLAIR}/v1/fn`, { method: 'POST' })
+    return { held: res.ok && !!(await res.json()).held }
   } catch {
-    // Aborted (selection cleared) or Klair isn't running.
-    return { tap: false, offline: !abort.signal.aborted }
-  } finally {
-    if (waiting.get(tabId) === abort) waiting.delete(tabId)
+    return { held: false } // Klair isn't running
   }
 }
 
@@ -87,7 +78,12 @@ chrome.runtime.onConnect.addListener((port) => {
       const res = await fetch(`${KLAIR}/v1/condense`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: msg.text, title: msg.title, url: msg.url }),
+        body: JSON.stringify({
+          text: msg.text,
+          title: msg.title,
+          url: msg.url,
+          again: !!msg.again
+        }),
         signal: abort.signal
       })
       if (!res.ok || !res.body) return post({ error: `Klair answered ${res.status}` })
@@ -107,14 +103,10 @@ chrome.runtime.onConnect.addListener((port) => {
 })
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-  if (msg?.type === 'klair:fn-wait') {
+  if (msg?.type === 'klair:fn-held') {
     if (!sender.tab || sender.frameId !== 0 || sender.tab.incognito) return false
-    waitForFn(sender.tab.id).then(sendResponse)
-    return true // answer when fn is tapped, or after Klair's 20 s
-  }
-  if (msg?.type === 'klair:fn-stop') {
-    if (sender.tab) waiting.get(sender.tab.id)?.abort()
-    return false
+    fnHeld().then(sendResponse)
+    return true // answer asynchronously
   }
   if (msg?.type === 'klair:page') {
     // Top frame of a normal tab only; never incognito.

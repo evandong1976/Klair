@@ -630,6 +630,11 @@ async function projectContext(sid: number): Promise<string> {
   return `Project "${name}". Covered earlier, most recent first:\n${lines.join('\n')}`
 }
 
+/** What the active project has covered so far, or '' when no project is active. */
+export async function activeProjectContext(): Promise<string> {
+  return projectId ? projectContext(projectId).catch(() => '') : ''
+}
+
 /** A note being written for a frame that may or may not end up being kept. */
 interface StartedNote {
   page: (PageContext & { id: number; at: number }) | null

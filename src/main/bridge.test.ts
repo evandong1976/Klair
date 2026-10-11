@@ -6,6 +6,7 @@ import { Bridge, type BrowserPage } from './bridge'
 const EXT = 'chrome-extension://abcdefghijklmnopabcdefghijklmnop'
 const pages: BrowserPage[] = []
 let observing = true
+let fnDown = false
 const bridge = new Bridge(
   {
     onPage: async (p) => {
@@ -14,6 +15,7 @@ const bridge = new Bridge(
       return { stored: true }
     },
     status: () => ({ session: observing, observing }),
+    fnHeld: () => fnDown,
     condense: async function* (input) {
       if (input.text === 'fail') throw new Error('model down')
       yield 'Short '
@@ -126,34 +128,14 @@ test('malformed pages are rejected', async () => {
   )
 })
 
-test('fn goes to a page that is waiting with text selected, and to Klair otherwise', async () => {
-  assert.equal(bridge.fnTap(), false) // nobody waiting: the tap opens Klair as usual
-  const waiting = call('POST', '/v1/fn', { origin: EXT })
-  await new Promise((r) => setTimeout(r, 50))
-  assert.equal(bridge.fnTap(), true)
-  const r = await waiting
-  assert.equal(r.status, 200)
-  assert.deepEqual(r.json, { tap: true })
-  assert.equal(bridge.fnTap(), false) // answered waiters don't linger
+test('a click asks whether fn is held', async () => {
+  assert.deepEqual((await call('POST', '/v1/fn', { origin: EXT })).json, { held: false })
+  fnDown = true
+  assert.deepEqual((await call('POST', '/v1/fn', { origin: EXT })).json, { held: true })
+  fnDown = false
 })
 
-test('a page that stops waiting no longer takes the fn tap', async () => {
-  const req = request({
-    host: '127.0.0.1',
-    port,
-    method: 'POST',
-    path: '/v1/fn',
-    headers: { origin: EXT }
-  })
-  req.on('error', () => {}) // destroying it below reports a hang-up
-  req.end()
-  await new Promise((r) => setTimeout(r, 50))
-  req.destroy() // the selection was cleared: the extension aborts its request
-  await new Promise((r) => setTimeout(r, 100))
-  assert.equal(bridge.fnTap(), false)
-})
-
-test('a web page cannot wait for fn or ask for a short version', async () => {
+test('a web page cannot ask about fn or for a short version', async () => {
   assert.equal((await call('POST', '/v1/fn', { origin: 'https://evil.example' })).status, 403)
   const r = await call('POST', '/v1/condense', {
     origin: 'https://evil.example',

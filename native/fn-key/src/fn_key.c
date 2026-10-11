@@ -1,13 +1,13 @@
 // Klair fn/globe key listener (macOS). Electron's globalShortcut can't bind fn alone,
 // so this addon watches keyboard events with a listen-only CGEventTap and reports:
+//   'down' / 'up'  fn pressed / released (so Klair knows when fn is being held)
 //   'tap'          fn pressed and released with no other key in between
 //   'chord', 'p'   fn held + P   (pause / resume)
 //   'chord', 'q'   fn held + Q   (quiet for 30 min)
 //   'chord', '1'–'9'   fn held + digit   (switch to that session)
 // Requires the Input Monitoring permission. Listen-only: it never blocks or changes keys.
 //
-// UNVERIFIED: written in a Linux workspace and not yet compiled. Build on the Mac with
-// `pnpm build:native`; see docs/PROGRESS.md.
+// Build on the Mac with `pnpm build:native`; see docs/PROGRESS.md.
 #include <node_api.h>
 #include <ApplicationServices/ApplicationServices.h>
 #include <pthread.h>
@@ -20,7 +20,7 @@
 #define KEY_Q 12
 
 typedef struct {
-  int kind; // 0 = tap, 1 = chord
+  int kind; // 0 = tap, 1 = chord, 2 = down, 3 = up
   char key;
 } FnEvent;
 
@@ -38,7 +38,8 @@ static void call_js(napi_env env, napi_value cb, void *context, void *data) {
   if (env != NULL && cb != NULL) {
     napi_value argv[2];
     napi_value global;
-    napi_create_string_utf8(env, e->kind == 0 ? "tap" : "chord", NAPI_AUTO_LENGTH, &argv[0]);
+    static const char *NAMES[4] = {"tap", "chord", "down", "up"};
+    napi_create_string_utf8(env, NAMES[e->kind & 3], NAPI_AUTO_LENGTH, &argv[0]);
     if (e->kind == 1) {
       char k[2] = {e->key, 0};
       napi_create_string_utf8(env, k, 1, &argv[1]);
@@ -71,8 +72,10 @@ static CGEventRef on_event(CGEventTapProxy proxy, CGEventType type, CGEventRef e
     if (down && !fn_down) {
       fn_down = true;
       other_key = false;
+      emit(2, 0);
     } else if (!down && fn_down) {
       fn_down = false;
+      emit(3, 0);
       if (!other_key) emit(0, 0);
     }
   } else if (type == kCGEventFlagsChanged && fn_down) {

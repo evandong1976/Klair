@@ -1,81 +1,82 @@
-// Klair for Chrome: select text, tap fn, and the passage is replaced in the page by a
-// short version (one to three sentences). Runs in the top frame of http/https pages.
+// Klair for Chrome: hold fn and click a paragraph, and it is replaced in the page by a
+// short version (one to three sentences) that keeps what matters for the project you
+// are working on. Runs in the top frame of http/https pages.
 //
-// The fn key never reaches a web page, so the Klair app listens for it. While this page
-// is focused with enough text selected, it waits on Klair (through the background
-// worker) for the tap. Without a selection nothing waits, and fn opens Klair as usual.
+// The fn key never reaches a web page, so the Klair app watches it. When a paragraph is
+// clicked, this asks Klair (through the background worker) whether fn is held. An
+// ordinary click gets "no" and nothing happens.
+//
+// Holding fn and clicking a short version shortens it again.
 ;(() => {
-  const MIN_CHARS = 120 // shorter than this isn't worth shortening; fn opens Klair instead
+  const MIN_CHARS = 80 // shorter than this isn't worth shortening
+  const MIN_AGAIN_CHARS = 60 // a short version below this is as short as it gets
   const MAX_CHARS = 20_000
   const ROSE = '238, 131, 120'
   const calm = matchMedia('(prefers-reduced-motion: reduce)').matches
 
-  const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
-  const tell = (msg) => {
-    try {
-      return chrome.runtime.sendMessage(msg).catch(() => null)
-    } catch {
-      return Promise.resolve(null) // the extension was reloaded; this script is orphaned
-    }
-  }
+  const BLOCKS = 'p, li, blockquote, dd, dt, figcaption, td, th, pre'
+  // Clicks on these do their own thing; never shorten around them.
+  const BUSY =
+    'a, button, input, textarea, select, label, summary, video, audio, [role="button"], [role="link"], [contenteditable]:not([contenteditable="false"])'
 
-  function selectedRange() {
-    if (document.visibilityState !== 'visible' || !document.hasFocus()) return null
-    const sel = getSelection()
-    if (!sel || sel.isCollapsed || sel.rangeCount === 0) return null
-    const range = sel.getRangeAt(0)
-    const el =
-      range.commonAncestorContainer.nodeType === 1
-        ? range.commonAncestorContainer
-        : range.commonAncestorContainer.parentElement
-    // Never rewrite what the user is typing, or text Klair already replaced.
-    if (
-      !el ||
-      el.closest(
-        'input, textarea, select, [contenteditable]:not([contenteditable="false"]), klair-condensed'
-      )
-    )
-      return null
-    if (sel.toString().trim().length < MIN_CHARS) return null
-    return range
-  }
+  // Each short version on the page: whether it can be shortened again, and how.
+  const states = new WeakMap()
 
-  // ---- waiting for the fn tap
-
-  let waiting = false
-  async function wait() {
-    if (waiting) return
-    waiting = true
-    try {
-      while (selectedRange()) {
-        const r = await tell({ type: 'klair:fn-wait' })
-        if (r?.tap) {
-          const range = selectedRange()
-          if (range) replace(range)
-          return
+  /** The paragraph (or list item, quote, cell) under a click, if it has enough text. */
+  function paragraphAt(target) {
+    if (!(target instanceof Element) || target.closest(BUSY)) return null
+    let block = target.closest(BLOCKS)
+    if (!block) {
+      // Pages built from plain <div>s: the nearest ancestor holding a paragraph's worth
+      // of text, as long as it isn't a whole section of the page.
+      for (let el = target; el && el !== document.body; el = el.parentElement) {
+        const n = (el.innerText || '').trim().length
+        if (n > 4000) return null
+        if (n >= MIN_CHARS) {
+          block = el
+          break
         }
-        // Klair isn't running, the extension is switched off, or it couldn't be reached.
-        if (!r || r.offline || r.off) await sleep(4000)
       }
-    } finally {
-      waiting = false
     }
+    if (!block || block.querySelector('klair-condensed')) return null
+    return (block.innerText || '').trim().length >= MIN_CHARS ? block : null
   }
 
-  let timer = 0
-  function check() {
-    clearTimeout(timer)
-    timer = setTimeout(() => {
-      if (selectedRange()) void wait()
-      else void tell({ type: 'klair:fn-stop' })
-    }, 120)
-  }
-  document.addEventListener('selectionchange', check)
-  window.addEventListener('focus', check)
-  window.addEventListener('blur', check)
-  document.addEventListener('visibilitychange', check)
+  // mousedown, not click: the question reaches Klair while fn is still down.
+  document.addEventListener(
+    'mousedown',
+    (e) => {
+      if (e.button !== 0 || e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return
+      // A click on a short version shortens it again; anywhere else, the paragraph.
+      const done = e.target instanceof Element ? e.target.closest('klair-condensed') : null
+      const again = done && states.get(done)
+      const block = done ? null : paragraphAt(e.target)
+      if (done ? !again || !again.canShorten() : !block) return
+      if (e.target instanceof Element && e.target.closest('[role="button"]')) return
+      let asked
+      try {
+        asked = chrome.runtime.sendMessage({ type: 'klair:fn-held' })
+      } catch {
+        return // the extension was reloaded; this script is orphaned
+      }
+      asked
+        .then((r) => {
+          if (!r?.held) return
+          if (again) {
+            if (again.canShorten()) again.shorten()
+            return
+          }
+          if (!block.isConnected || block.querySelector('klair-condensed')) return
+          const range = document.createRange()
+          range.selectNodeContents(block)
+          replace(range, (block.innerText || '').trim())
+        })
+        .catch(() => {})
+    },
+    true
+  )
 
-  // ---- replacing the selection
+  // ---- replacing the paragraph
 
   function bar(width) {
     const b = document.createElement('span')
@@ -98,24 +99,7 @@
     return b
   }
 
-  function replace(range) {
-    const text = getSelection().toString().trim().slice(0, MAX_CHARS)
-    // Where the selection starts: a selection across paragraphs leaves the range between
-    // them once it is lifted out, and the short version belongs in the first one.
-    const start =
-      range.startContainer.nodeType === 1
-        ? range.startContainer
-        : range.startContainer.parentElement
-    const kept = range.extractContents()
-    getSelection().removeAllRanges()
-
-    // An unknown element is inline by default, so the short version flows with the page's
-    // own text and font. Styles are set from script: a page's CSP can't block those.
-    const wrap = document.createElement('klair-condensed')
-    const short = document.createElement('span')
-    const original = document.createElement('span')
-    original.style.display = 'none'
-    original.append(kept)
+  function loadingBars() {
     const loading = document.createElement('span')
     Object.assign(loading.style, {
       display: 'inline-block',
@@ -126,97 +110,151 @@
     loading.setAttribute('role', 'status')
     loading.setAttribute('aria-label', 'Klair is shortening this')
     loading.append(bar('100%'), bar('64%'))
+    return loading
+  }
+
+  /**
+   * Ask Klair for the short version of `text` and stream it into `short`, behind a
+   * shimmer until the first word arrives. Resolves with the new text, or null if
+   * nothing usable came back (the caller puts things back as they were).
+   */
+  function stream(text, again, short, loading) {
+    return new Promise((resolve) => {
+      let got = ''
+      let finished = false
+      let port
+      try {
+        port = chrome.runtime.connect({ name: 'klair:condense' })
+      } catch {
+        return resolve(null)
+      }
+      const end = (value) => {
+        if (finished) return
+        finished = true
+        loading.remove()
+        try {
+          port.disconnect()
+        } catch {
+          // already closed
+        }
+        resolve(value)
+      }
+      port.onMessage.addListener((m) => {
+        if (m.delta) {
+          if (!got) {
+            loading.remove()
+            short.textContent = ''
+          }
+          got += m.delta
+          // Each piece fades in as it arrives; they are merged into plain text at the end.
+          const piece = document.createElement('span')
+          piece.textContent = m.delta
+          short.append(piece)
+          if (!calm)
+            piece.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 220, easing: 'ease-out' })
+        } else if (m.done) end(got.trim() || null)
+        else if (m.error) end(null)
+      })
+      port.onDisconnect.addListener(() => end(null)) // cut off mid-answer
+      port.postMessage({ text, title: document.title, url: location.href, again })
+    })
+  }
+
+  function settle(short, text) {
+    short.textContent = text
+    Object.assign(short.style, {
+      background: `rgba(${ROSE}, 0.09)`,
+      borderRadius: '0.25em',
+      boxShadow: `0 0 0 0.12em rgba(${ROSE}, 0.09)`
+    })
+    if (!calm) {
+      short.animate(
+        [{ background: `rgba(${ROSE}, 0.32)` }, { background: `rgba(${ROSE}, 0.09)` }],
+        { duration: 900, easing: 'ease-out' }
+      )
+    }
+  }
+
+  async function replace(range, full) {
+    const kept = range.extractContents()
+    getSelection().removeAllRanges()
+
+    // An unknown element is inline by default, so the short version flows with the page's
+    // own text and font. Styles are set from script: a page's CSP can't block those.
+    const wrap = document.createElement('klair-condensed')
+    const short = document.createElement('span')
+    const original = document.createElement('span')
+    original.style.display = 'none'
+    original.append(kept)
+    const loading = loadingBars()
     wrap.append(short, original, loading)
-    if (start && start.isConnected && !start.contains(range.startContainer)) start.append(wrap)
-    else range.insertNode(wrap)
+    range.insertNode(wrap)
 
-    const restore = () => {
-      wrap.replaceWith(...original.childNodes)
-    }
+    const text = await stream(full.slice(0, MAX_CHARS), false, short, loading)
+    if (!text) return wrap.replaceWith(...original.childNodes) // put the page back as it was
+    settle(short, text)
 
-    let got = ''
-    let finished = false
-    let port
-    try {
-      port = chrome.runtime.connect({ name: 'klair:condense' })
-    } catch {
-      return restore()
-    }
-    port.onMessage.addListener((m) => {
-      if (m.delta) {
-        if (!got) loading.remove()
-        got += m.delta
-        // Each piece fades in as it arrives; they are merged into plain text at the end.
-        const piece = document.createElement('span')
-        piece.textContent = m.delta
-        short.append(piece)
-        if (!calm)
-          piece.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 220, easing: 'ease-out' })
-      } else if (m.done) {
-        finished = true
-        port.disconnect()
-        if (!got.trim()) return restore()
-        finish()
-      } else if (m.error) {
-        finished = true
-        port.disconnect()
-        restore()
-      }
+    // A small switch back to what the page said, and forward again.
+    const toggle = document.createElement('span')
+    toggle.setAttribute('role', 'button')
+    toggle.tabIndex = 0
+    Object.assign(toggle.style, {
+      marginLeft: '0.5em',
+      fontSize: '0.72em',
+      fontWeight: '600',
+      letterSpacing: '0.02em',
+      color: '#a8463d',
+      cursor: 'pointer',
+      whiteSpace: 'nowrap',
+      userSelect: 'none'
     })
-    port.onDisconnect.addListener(() => {
-      if (!finished) restore() // cut off mid-answer: put the page back as it was
-    })
-    port.postMessage({ text, title: document.title, url: location.href })
-
-    function finish() {
-      short.textContent = got.trim()
-      Object.assign(short.style, {
-        background: `rgba(${ROSE}, 0.09)`,
-        borderRadius: '0.25em',
-        boxShadow: `0 0 0 0.12em rgba(${ROSE}, 0.09)`
-      })
-      if (!calm) {
-        short.animate(
-          [{ background: `rgba(${ROSE}, 0.32)` }, { background: `rgba(${ROSE}, 0.09)` }],
-          { duration: 900, easing: 'ease-out' }
-        )
-      }
-
-      // A small switch back to what the page said, and forward again.
-      const toggle = document.createElement('span')
-      toggle.setAttribute('role', 'button')
-      toggle.tabIndex = 0
-      Object.assign(toggle.style, {
-        marginLeft: '0.5em',
-        fontSize: '0.72em',
-        fontWeight: '600',
-        letterSpacing: '0.02em',
-        color: '#a8463d',
-        cursor: 'pointer',
-        whiteSpace: 'nowrap',
-        userSelect: 'none'
-      })
-      let showingShort = true
-      const show = () => {
-        short.style.display = showingShort ? '' : 'none'
-        original.style.display = showingShort ? 'none' : 'contents'
-        toggle.textContent = showingShort ? 'original' : 'short version'
-        toggle.title = showingShort
-          ? 'Shortened by Klair. Show what the page said.'
-          : "Show Klair's short version again."
-      }
-      const flip = (e) => {
-        e.preventDefault()
-        e.stopPropagation()
-        showingShort = !showingShort
-        show()
-      }
-      toggle.addEventListener('click', flip)
-      toggle.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter' || e.key === ' ') flip(e)
-      })
+    let showingShort = true
+    let busy = false
+    const show = () => {
+      short.style.display = showingShort ? '' : 'none'
+      original.style.display = showingShort ? 'none' : 'contents'
+      toggle.textContent = showingShort ? 'original' : 'short version'
+      toggle.title = showingShort
+        ? 'Shortened by Klair. Show what the page said. Hold fn and click the text to shorten it again.'
+        : "Show Klair's short version again."
+    }
+    const flip = (e) => {
+      e.preventDefault()
+      e.stopPropagation()
+      if (busy) return
+      showingShort = !showingShort
       show()
-      wrap.append(toggle)
     }
+    toggle.addEventListener('click', flip)
+    toggle.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') flip(e)
+    })
+    show()
+    wrap.append(toggle)
+
+    states.set(wrap, {
+      canShorten: () => !busy && showingShort && short.textContent.trim().length >= MIN_AGAIN_CHARS,
+      // fn + click on the short version: the same shimmer, then a tighter version of it.
+      async shorten() {
+        busy = true
+        const before = short.textContent
+        const again = loadingBars()
+        short.style.display = 'none'
+        wrap.insertBefore(again, toggle)
+        const shown = () => (short.style.display = '')
+        // The old text stays hidden behind the shimmer until the first new word.
+        const firstWord = new MutationObserver(() => {
+          firstWord.disconnect()
+          shown()
+        })
+        firstWord.observe(short, { childList: true })
+        const tighter = await stream(before, true, short, again)
+        firstWord.disconnect()
+        shown()
+        // Nothing came back, or it wasn't shorter: keep what was there.
+        settle(short, tighter && tighter.length < before.length ? tighter : before)
+        busy = false
+      }
+    })
   }
 })()

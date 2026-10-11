@@ -12,10 +12,9 @@ import { z } from 'zod'
 //   GET  /v1/status   → { app: 'klair', session, observing }   (extension heartbeat)
 //   POST /v1/page     ← { url, title, text, description?, truncated? }
 //                     → 200 { stored } · 409 { reason } when no session is observing
-//   POST /v1/fn       → { tap }   held open while a page has text selected; answers
-//                       { tap: true } the moment fn is tapped, { tap: false } after 20 s
-//   POST /v1/condense ← { text, title?, url? }
-//                     → 200 text/plain, streamed: the 1–3 sentences that replace the selection
+//   POST /v1/fn       → { held }   asked when a paragraph is clicked: is fn held down?
+//   POST /v1/condense ← { text, title?, url?, again? }
+//                     → 200 text/plain, streamed: the 1–3 sentences that replace the paragraph
 
 /** Pinned by the "key" in extension/manifest.json. */
 export const KLAIR_EXTENSION_ID = 'jndibkpbjoldneahpgmofeoekkpeaepo'
@@ -35,12 +34,13 @@ const pageSchema = z.object({
 export type BrowserPage = z.infer<typeof pageSchema>
 
 export const MAX_CONDENSE_CHARS = 20_000
-const FN_WAIT_MS = 20_000
 
 const condenseSchema = z.object({
   text: z.string().trim().min(1).max(MAX_CONDENSE_CHARS),
   title: z.string().max(1000).default(''),
-  url: z.string().max(4096).default('')
+  url: z.string().max(4096).default(''),
+  /** The text is already Klair's short version, and the reader wants it shorter still. */
+  again: z.boolean().default(false)
 })
 
 export type CondenseInput = z.infer<typeof condenseSchema>
@@ -48,7 +48,9 @@ export type CondenseInput = z.infer<typeof condenseSchema>
 export interface BridgeHandlers {
   onPage(page: BrowserPage): Promise<{ stored: boolean; reason?: string }>
   status(): { session: boolean; observing: boolean }
-  /** Streams the short replacement for a selected passage. Optional: 404 without it. */
+  /** Is fn held right now? Asked when a paragraph is clicked. Optional: false without it. */
+  fnHeld?(): boolean
+  /** Streams the short replacement for a clicked paragraph. Optional: 404 without it. */
   condense?(input: CondenseInput, signal: AbortSignal): AsyncIterable<string>
 }
 
@@ -66,8 +68,6 @@ export interface BridgeInfo {
 export class Bridge {
   private server: Server | null = null
   private state: BridgeInfo
-  /** Pages with text selected, each waiting to hear about the next fn tap. */
-  private fnWaiters = new Set<(tap: boolean) => void>()
   private readonly origin: string
 
   constructor(
@@ -106,19 +106,7 @@ export class Bridge {
     })
   }
 
-  /**
-   * fn was tapped. If a page in Chrome is waiting with text selected, the tap is
-   * theirs (they replace the selection with a short version) and this returns true;
-   * otherwise false, and the tap does what it always did.
-   */
-  fnTap(): boolean {
-    if (this.fnWaiters.size === 0) return false
-    for (const answer of [...this.fnWaiters]) answer(true)
-    return true
-  }
-
   close(): void {
-    for (const answer of [...this.fnWaiters]) answer(false)
     this.server?.close()
     this.server = null
     this.state.listening = false
@@ -179,20 +167,10 @@ export class Bridge {
     }
     if (req.method === 'POST' && path === '/v1/fn') {
       // POST, not GET: a web page can't make a POST here without showing its Origin.
-      const answer = (tap: boolean): void => {
-        if (!this.fnWaiters.delete(answer)) return
-        clearTimeout(timer)
-        if (!res.writableEnded) this.send(res, 200, { tap })
-      }
-      const timer = setTimeout(() => answer(false), FN_WAIT_MS)
-      this.fnWaiters.add(answer)
-      // The page lost its selection or focus, or the tab closed: stop waiting.
-      res.on('close', () => {
-        this.fnWaiters.delete(answer)
-        clearTimeout(timer)
-      })
       req.resume()
-      return
+      const held = this.handlers.fnHeld?.() ?? false
+      if (held) console.log('chrome: fn + click on a paragraph')
+      return this.send(res, 200, { held })
     }
     if (req.method === 'POST' && path === '/v1/condense' && this.handlers.condense) {
       let input: CondenseInput
