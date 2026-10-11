@@ -8,6 +8,7 @@ import { config } from './config'
 
 let state: KlairState = {
   session: null,
+  project: null,
   observing: 'off',
   saving: true,
   flower: 'off',

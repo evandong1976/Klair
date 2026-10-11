@@ -203,3 +203,17 @@ test('a pinned selection wins over a screen change held while the panel is open'
   core.unpin()
   assert.equal(core.currentCaptureId, 2) // back to the latest screen
 })
+
+test('switching project starts afresh: no ideas, held change or selection carry over', () => {
+  const { core, clock } = setup()
+  shown(core, clock, 'a', 1)
+  core.pin(5)
+  core.resetContext()
+  assert.equal(core.current, null)
+  assert.equal(core.currentCaptureId, null)
+  assert.equal(core.pinnedCaptureId, null)
+  assert.equal(core.select(1)[0].type, 'rejectSelection') // the old ideas are gone
+  // The new project's first capture becomes the context.
+  core.onCapture(20, true)
+  assert.equal(core.currentCaptureId, 20)
+})

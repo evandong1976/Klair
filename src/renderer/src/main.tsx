@@ -4,6 +4,7 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { MotionConfig } from 'motion/react'
 import { FlowerWindow } from './views/FlowerWindow'
+import { GraphWindow } from './views/Graph'
 import { PanelWindow } from './views/Panel'
 import { SelectWindow } from './views/Select'
 import { SessionsWindow } from './views/Sessions'
@@ -17,10 +18,12 @@ const routes: Record<string, () => React.JSX.Element | null> = {
   select: SelectWindow,
   start: StartWindow,
   sessions: SessionsWindow,
+  graph: GraphWindow,
   tray: TrayWindow
 }
 
-const route = window.location.hash.replace(/^#\/?/, '') || 'start'
+// #/graph/12 → the graph route with project 12 (the view reads the rest).
+const route = window.location.hash.replace(/^#\/?/, '').split('/')[0] || 'start'
 const View = routes[route] ?? StartWindow
 document.title = `Klair · ${route}`
 

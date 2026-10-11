@@ -59,11 +59,22 @@ async function bin(): Promise<string> {
 export async function indexSession(
   notesDir: string,
   outDir: string,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  opts: { force?: boolean } = {}
 ): Promise<string> {
   const { stdout, stderr } = await run(
     await bin(),
-    ['extract', notesDir, '--backend', 'openai', '--out', outDir, '--no-gitignore'],
+    [
+      'extract',
+      notesDir,
+      '--backend',
+      'openai',
+      '--out',
+      outDir,
+      '--no-gitignore',
+      // A full re-scan, e.g. after old notes were removed (extract is incremental otherwise).
+      ...(opts.force ? ['--force'] : [])
+    ],
     {
       timeout: 600_000,
       signal,

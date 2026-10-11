@@ -1,18 +1,19 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { HealthReport, SessionListItem } from '../../../shared/types'
+import type { HealthReport, ProjectItem } from '../../../shared/types'
 import { Flower } from '../components/Flower'
 import { Button, Key, PixelLabel } from '../components/ui'
 import { isMod, klair, useKlairState } from '../lib/useKlair'
 import { HealthRow } from './HealthRow'
 import { prettyAccel } from '../../../shared/keys'
 
-// Opening Klair: pick up one of your sessions (keys 1–9, the same numbers as the
-// fn 1–9 switcher), or make a new one. The very first time there is nothing to pick
-// up, so it goes straight to "Start a session" (Start.dc.html) with connection
-// health (BUILD_PROMPT §4.1). Privacy copy follows BUILD_PROMPT §2, kept literally true.
+// Opening Klair: pick the project to work in (keys 1–9, the same numbers as the fn 1–9
+// switcher), or make a new one. Picking starts a session (the time you work), or, while
+// one runs, switches project within it. The very first time there is no project yet,
+// so it goes straight to naming one (Start.dc.html) with connection health
+// (BUILD_PROMPT §4.1). Privacy copy follows BUILD_PROMPT §2, kept literally true.
 
-function lastUsed(s: SessionListItem): string {
-  const d = new Date(s.endedAt ?? s.startedAt)
+function lastUsed(p: ProjectItem): string {
+  const d = new Date(p.lastUsedAt ?? p.createdAt)
   const day = d.toLocaleDateString([], { month: 'short', day: 'numeric' })
   return `${day}, ${d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`
 }
@@ -24,12 +25,12 @@ export function StartWindow(): React.JSX.Element {
   const [name, setName] = useState('')
   const nameRef = useRef<HTMLInputElement>(null)
   // null until the list has loaded, so the window doesn't flash the wrong screen.
-  const [sessions, setSessions] = useState<SessionListItem[] | null>(null)
+  const [projects, setProjects] = useState<ProjectItem[] | null>(null)
   const [wantsNew, setWantsNew] = useState(false)
-  const slotted = (sessions ?? [])
+  const slotted = (projects ?? [])
     .filter((s) => s.slot !== null)
     .sort((a, b) => (a.slot as number) - (b.slot as number))
-  const creating = wantsNew || (sessions !== null && slotted.length === 0)
+  const creating = wantsNew || (projects !== null && slotted.length === 0)
 
   const recheck = useCallback(async (): Promise<void> => {
     setChecking(true)
@@ -42,10 +43,10 @@ export function StartWindow(): React.JSX.Element {
 
   useEffect(() => {
     void klair.getHealth().then(setHealth)
-    void klair.listSessions().then(setSessions)
+    void klair.listProjects().then(setProjects)
     const onFocus = (): void => {
       void klair.runHealth().then(setHealth)
-      void klair.listSessions().then(setSessions)
+      void klair.listProjects().then(setProjects)
     }
     window.addEventListener('focus', onFocus)
     return () => window.removeEventListener('focus', onFocus)
@@ -54,18 +55,18 @@ export function StartWindow(): React.JSX.Element {
   const check = (id: string): HealthReport['checks'][number] | undefined =>
     health?.checks.find((c) => c.id === id)
   const screenOk = check('screen')?.status === 'ok'
-  // Sessions are saved on this Mac first and uploaded to TigerData when they end,
-  // so only the local store has to work to start one.
+  // Projects are saved on this Mac first and uploaded to TigerData after each session,
+  // so only the local store has to work to start.
   const localOk = check('local')?.status === 'ok'
   const tigerOk = !!check('tigerdata') && check('tigerdata')?.status !== 'fail'
   const ready = !!health && screenOk && localOk
   const start = (): void => {
     if (ready && creating) void klair.startSession(name)
   }
-  const pick = (s: SessionListItem): void => {
-    if (ready) void klair.continueSession(s.id)
+  const pick = (p: ProjectItem): void => {
+    if (ready) void klair.switchProject(p.id)
   }
-  const newSession = (): void => {
+  const newProject = (): void => {
     setWantsNew(true)
     setTimeout(() => nameRef.current?.focus(), 0)
   }
@@ -84,7 +85,7 @@ export function StartWindow(): React.JSX.Element {
         }
         return
       }
-      // Picking: 1–9 (with or without ⌘) continues that session, ⌘N makes a new one.
+      // Picking: 1–9 (with or without ⌘) works in that project, ⌘N makes a new one.
       const slot = /^Digit([1-9])$/.exec(e.code)?.[1]
       const target = slot ? slotted.find((s) => s.slot === Number(slot)) : undefined
       if (target && !e.altKey && !e.ctrlKey) {
@@ -92,7 +93,7 @@ export function StartWindow(): React.JSX.Element {
         pick(target)
       } else if (isMod(e) && e.key.toLowerCase() === 'n') {
         e.preventDefault()
-        newSession()
+        newProject()
       }
     }
     window.addEventListener('keydown', onKey)
@@ -115,7 +116,7 @@ export function StartWindow(): React.JSX.Element {
         <div className="flex flex-col gap-1">
           <PixelLabel className="text-[12px]">Klair</PixelLabel>
           <h1 className="m-0 text-[28px] font-extrabold tracking-[-0.01em]">
-            {creating ? 'Start a session' : 'Pick up a session'}
+            {creating ? 'New project' : state?.session ? 'Switch project' : 'Pick a project'}
           </h1>
         </div>
       </div>
@@ -123,18 +124,20 @@ export function StartWindow(): React.JSX.Element {
       {creating ? (
         <>
           <p className="m-0 text-[15px] leading-[1.5] text-ink-2 text-pretty">
-            Klair watches your screen while a session is on. When you pause, the flower offers
-            ideas. Tap fn (or {openKey}) to open it, then ⌘1–9 to pick. Nothing runs until you do.
+            A project (say &ldquo;ML&rdquo; or &ldquo;SW&rdquo;) keeps everything Klair gathers for
+            it, with its own knowledge graph. Klair watches your screen while you work; when you
+            pause, the flower offers ideas. Tap fn (or {openKey}) to open it, then ⌘1–9 to pick.
+            Nothing runs until you do.
           </p>
           <div className="flex flex-col gap-2">
             <label htmlFor="sname" className="text-[13.5px] font-bold">
-              Session name
+              Project name
             </label>
             <input
               id="sname"
               ref={nameRef}
               value={name}
-              placeholder="e.g. ML study"
+              placeholder="e.g. ML"
               onChange={(e) => setName(e.target.value)}
               className="h-11 box-border px-3.5 rounded-[12px] border border-line-input bg-white text-[15px] font-medium text-ink outline-none"
             />
@@ -143,12 +146,12 @@ export function StartWindow(): React.JSX.Element {
       ) : (
         <>
           <p className="m-0 text-[15px] leading-[1.5] text-ink-2 text-pretty">
-            Each session keeps its own notes and ideas. Press its number here, or fn 1–9 (⌃⌥1–9)
-            from anywhere to switch while you work.
+            Each project keeps its own notes, ideas and knowledge graph. Press its number here, or
+            fn 1–9 (⌃⌥1–9) from anywhere to switch while you work; the session keeps running.
           </p>
-          <nav aria-label="Your sessions" className="flex flex-col gap-2">
+          <nav aria-label="Your projects" className="flex flex-col gap-2">
             {slotted.map((s) => {
-              const running = state?.session?.id === s.id
+              const running = state?.project?.id === s.id
               return (
                 <button
                   key={s.id}
@@ -161,7 +164,9 @@ export function StartWindow(): React.JSX.Element {
                   <span className="flex-1 min-w-0 flex flex-col gap-0.5">
                     <span className="text-[15px] font-bold truncate">{s.name}</span>
                     <span className="text-[12.5px] text-muted">
-                      {running ? 'Running now' : `Last used ${lastUsed(s)}`}
+                      {running
+                        ? 'Working in it now'
+                        : `${s.notes} note${s.notes === 1 ? '' : 's'} · last used ${lastUsed(s)}`}
                     </span>
                   </span>
                 </button>
@@ -209,7 +214,7 @@ export function StartWindow(): React.JSX.Element {
               title="Where your data lives"
               detail={`${
                 localOk ? '' : `${check('local')?.detail ?? 'Checking this Mac…'} `
-              }Screenshots stay on this Mac. A session is saved here while it runs, then uploaded to your TigerData database when it ends${
+              }Screenshots and files stay on this Mac. Each project is saved here, then uploaded to your TigerData database after each session${
                 tigerOk ? '' : ' (once TigerData is reachable)'
               }. Kept for ${state?.retentionDays ?? '…'} days.`}
               last
@@ -266,7 +271,7 @@ export function StartWindow(): React.JSX.Element {
               keyHint="⌘↵"
               className="h-11 text-[14px]"
             >
-              Start observing
+              {state?.session ? 'Switch to it' : 'Start observing'}
             </Button>
           </>
         ) : (
@@ -280,8 +285,8 @@ export function StartWindow(): React.JSX.Element {
             <Button onClick={() => window.close()} keyHint="esc" className="h-11 text-[14px]">
               Not now
             </Button>
-            <Button onClick={newSession} keyHint="⌘N" className="h-11 text-[14px]">
-              New session
+            <Button onClick={newProject} keyHint="⌘N" className="h-11 text-[14px]">
+              New project
             </Button>
           </>
         )}

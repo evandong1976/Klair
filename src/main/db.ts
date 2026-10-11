@@ -3,10 +3,10 @@ import { config } from './config'
 import type { HealthReport, InsightRow, StuckSpot } from '../shared/types'
 import type { NoteHit } from './local'
 
-// TigerData (Postgres + TimescaleDB) is where ended sessions are kept. A running
-// session writes to SQLite on the Mac (local.ts); upload.ts copies it here when it
-// ends. From here come search over earlier sessions, the activity_by_minute
-// continuous aggregate for insights, and retention.
+// TigerData (Postgres + TimescaleDB) keeps a copy of every project. Projects are saved
+// on the Mac first (SQLite, local.ts); upload.ts copies each project here after the
+// sessions it was worked in. From here come the activity_by_minute continuous
+// aggregate for insights, the activity hypertable with retention, and BM25 search.
 // Screenshot image files stay on the Mac; rows store their paths.
 // Every schema change is additive: teammates may already have these tables.
 
@@ -35,31 +35,30 @@ export const capabilities: HealthReport['capabilities'] = {
 }
 
 const baseSchema = `
-create table if not exists sessions (
+create table if not exists projects (
   id bigint generated always as identity primary key,
-  started_at timestamptz not null default now(),
-  ended_at timestamptz
+  created_at timestamptz not null default now(),
+  last_used_at timestamptz
 );
 create table if not exists captures (
   id bigint generated always as identity primary key,
-  session_id bigint not null references sessions(id) on delete cascade,
+  project_id bigint not null references projects(id) on delete cascade,
   captured_at timestamptz not null default now(),
   screenshot_path text not null,
   note text
 );
-create index if not exists captures_session_idx on captures (session_id, captured_at);
+create index if not exists captures_project_idx on captures (project_id, captured_at);
 create table if not exists actions (
   id bigint generated always as identity primary key,
-  session_id bigint not null references sessions(id) on delete cascade,
+  project_id bigint not null references projects(id) on delete cascade,
   capture_id bigint references captures(id) on delete set null,
   created_at timestamptz not null default now(),
   prompt text not null,
   result text
 );
-create index if not exists actions_session_idx on actions (session_id, created_at);
+create index if not exists actions_project_idx on actions (project_id, created_at);
 
-alter table sessions add column if not exists name text not null default 'Session';
-alter table sessions add column if not exists status text not null default 'active';
+alter table projects add column if not exists name text not null default 'Project';
 
 alter table captures add column if not exists app_name text;
 alter table captures add column if not exists window_title text;
@@ -71,7 +70,7 @@ alter table captures add column if not exists note_path text;
 
 create table if not exists suggestion_sets (
   id bigint generated always as identity primary key,
-  session_id bigint not null references sessions(id) on delete cascade,
+  project_id bigint not null references projects(id) on delete cascade,
   capture_id bigint references captures(id) on delete set null,
   generation_id integer not null,
   created_at timestamptz not null default now(),
@@ -79,7 +78,7 @@ create table if not exists suggestion_sets (
   topic text,
   suggestions jsonb not null
 );
-create index if not exists suggestion_sets_session_idx on suggestion_sets (session_id, created_at);
+create index if not exists suggestion_sets_project_idx on suggestion_sets (project_id, created_at);
 
 alter table actions add column if not exists kind text;
 alter table actions add column if not exists status text not null default 'pending';
@@ -92,7 +91,7 @@ alter table actions add column if not exists completed_at timestamptz;
 
 create table if not exists notes (
   id bigint generated always as identity primary key,
-  session_id bigint not null references sessions(id) on delete cascade,
+  project_id bigint not null references projects(id) on delete cascade,
   capture_id bigint references captures(id) on delete set null,
   action_id bigint references actions(id) on delete set null,
   provenance text not null check (provenance in ('observed', 'assistant')),
@@ -100,12 +99,12 @@ create table if not exists notes (
   body text not null,
   created_at timestamptz not null default now()
 );
-create index if not exists notes_session_idx on notes (session_id, created_at);
+create index if not exists notes_project_idx on notes (project_id, created_at);
 create index if not exists notes_body_fts on notes using gin (to_tsvector('english', body));
 
 create table if not exists screen_activity (
   time timestamptz not null,
-  session_id bigint not null references sessions(id) on delete cascade,
+  project_id bigint not null references projects(id) on delete cascade,
   capture_id bigint,
   app_name text,
   window_title text,
@@ -114,13 +113,13 @@ create table if not exists screen_activity (
   changed boolean not null default false,
   dwell_ms integer not null default 0
 );
-create index if not exists screen_activity_session_idx on screen_activity (session_id, time desc);
+create index if not exists screen_activity_project_idx on screen_activity (project_id, time desc);
 
--- Uploads from the Mac's SQLite store. local_key identifies the local session, so a
--- retried upload replaces the earlier copy instead of duplicating it; local_id maps
--- each row back to its local row (and lets the upload remap ids in one round trip).
-alter table sessions add column if not exists local_key text;
-create unique index if not exists sessions_local_key_idx on sessions (local_key);
+-- Uploads from the Mac's SQLite store. local_key identifies the local project, so a
+-- re-upload replaces the earlier copy instead of duplicating it; local_id maps each
+-- row back to its local row (and lets the upload remap ids in one round trip).
+alter table projects add column if not exists local_key text;
+create unique index if not exists projects_local_key_idx on projects (local_key);
 alter table captures add column if not exists local_id bigint;
 alter table suggestion_sets add column if not exists local_id bigint;
 alter table actions add column if not exists local_id bigint;
@@ -129,7 +128,7 @@ alter table notes add column if not exists local_id bigint;
 -- Full pages from the Chrome extension, and the page each screenshot shows.
 create table if not exists pages (
   id bigint generated always as identity primary key,
-  session_id bigint not null references sessions(id) on delete cascade,
+  project_id bigint not null references projects(id) on delete cascade,
   captured_at timestamptz not null default now(),
   url text not null,
   title text,
@@ -141,7 +140,7 @@ create table if not exists pages (
   index_status text not null default 'pending',
   local_id bigint
 );
-create index if not exists pages_session_idx on pages (session_id, captured_at);
+create index if not exists pages_project_idx on pages (project_id, captured_at);
 alter table captures add column if not exists page_id bigint references pages(id) on delete set null;
 -- 'auto' (capture loop) or 'selection' (an area the user selected).
 alter table captures add column if not exists source text not null default 'auto';
@@ -149,7 +148,7 @@ alter table captures add column if not exists source text not null default 'auto
 -- Files the user added from Downloads: metadata and extracted text (the file stays on the Mac).
 create table if not exists files (
   id bigint generated always as identity primary key,
-  session_id bigint not null references sessions(id) on delete cascade,
+  project_id bigint not null references projects(id) on delete cascade,
   added_at timestamptz not null default now(),
   name text not null,
   kind text not null,
@@ -164,8 +163,21 @@ create table if not exists files (
   index_status text not null default 'pending',
   local_id bigint
 );
-create index if not exists files_session_idx on files (session_id, added_at);
+create index if not exists files_project_idx on files (project_id, added_at);
 alter table notes add column if not exists file_id bigint references files(id) on delete set null;
+
+-- Sessions hold no data: they are time. Which project was active when, per local session.
+create table if not exists project_spans (
+  id bigint generated always as identity primary key,
+  project_id bigint not null references projects(id) on delete cascade,
+  session_key text not null,
+  session_started_at timestamptz,
+  session_ended_at timestamptz,
+  started_at timestamptz not null,
+  ended_at timestamptz
+);
+create index if not exists project_spans_project_idx on project_spans (project_id, started_at);
+create index if not exists project_spans_session_idx on project_spans (session_key);
 `
 
 async function tryStep(client: PoolClient, label: string, sql: string): Promise<boolean> {
@@ -178,10 +190,62 @@ async function tryStep(client: PoolClient, label: string, sql: string): Promise<
   }
 }
 
+const CONTEXT_TABLES = [
+  'captures',
+  'suggestion_sets',
+  'actions',
+  'notes',
+  'screen_activity',
+  'pages',
+  'files'
+]
+
+/**
+ * Databases from before projects: "sessions" held the context. Rename them to
+ * projects (and session_id → project_id) in one transaction. The activity_by_minute
+ * aggregate is derived, so it is dropped here and rebuilt by migrate().
+ */
+async function migrateSessionsToProjects(client: PoolClient): Promise<void> {
+  const { rows } = await client.query(
+    `select
+       exists (select 1 from information_schema.columns
+               where table_schema = current_schema() and table_name = 'sessions'
+                 and column_name = 'local_key') as old,
+       to_regclass('projects') is not null as new`
+  )
+  if (!rows[0].old || rows[0].new) return
+  await client.query('begin')
+  try {
+    await client.query(`drop materialized view if exists activity_by_minute cascade`)
+    await client.query(`alter table sessions rename to projects`)
+    await client.query(`alter table projects rename column started_at to created_at`)
+    await client.query(`alter table projects rename column ended_at to last_used_at`)
+    await client.query(
+      `alter index if exists sessions_local_key_idx rename to projects_local_key_idx`
+    )
+    for (const t of CONTEXT_TABLES) {
+      const col = await client.query(
+        `select 1 from information_schema.columns
+         where table_schema = current_schema() and table_name = $1 and column_name = 'session_id'`,
+        [t]
+      )
+      if (col.rows.length)
+        await client.query(`alter table ${t} rename column session_id to project_id`)
+      await client.query(`alter index if exists ${t}_session_idx rename to ${t}_project_idx`)
+    }
+    await client.query('commit')
+    console.log('tigerdata: renamed sessions to projects')
+  } catch (err) {
+    await client.query('rollback')
+    throw err
+  }
+}
+
 /** Create or extend the schema, then enable TimescaleDB / search features one by one. */
 export async function migrate(): Promise<HealthReport['capabilities']> {
   const client = await requirePool().connect()
   try {
+    await migrateSessionsToProjects(client)
     await client.query(baseSchema)
 
     capabilities.timescale =
@@ -205,14 +269,14 @@ export async function migrate(): Promise<HealthReport['capabilities']> {
           `create materialized view if not exists activity_by_minute
            with (timescaledb.continuous) as
            select time_bucket('1 minute', time) as bucket,
-                  session_id,
+                  project_id,
                   coalesce(topic, '') as topic,
                   coalesce(app_name, '') as app_name,
                   count(*) as ticks,
                   sum(case when changed then 1 else 0 end) as changes,
                   max(dwell_ms) as max_dwell_ms
            from screen_activity
-           group by bucket, session_id, coalesce(topic, ''), coalesce(app_name, '')
+           group by bucket, project_id, coalesce(topic, ''), coalesce(app_name, '')
            with no data`
         )) &&
         (await tryStep(
@@ -251,31 +315,24 @@ export async function migrate(): Promise<HealthReport['capabilities']> {
   }
 }
 
-// ---------------------------------------------------------------- sessions (by TigerData id)
+// ---------------------------------------------------------------- projects (by TigerData id)
 
-export async function deleteSessionRows(id: number): Promise<void> {
-  await requirePool().query(`delete from sessions where id = $1`, [id])
+export async function deleteProjectRows(id: number): Promise<void> {
+  await requirePool().query(`delete from projects where id = $1`, [id])
   if (capabilities.continuousAggregate) {
-    // Best effort: re-materialize so the aggregate forgets the deleted session now.
+    // Best effort: re-materialize so the aggregate forgets the deleted project now.
     await requirePool()
       .query(`call refresh_continuous_aggregate('activity_by_minute', null, null)`)
       .catch(() => undefined)
   }
 }
 
-export async function expiredSessionIds(days: number): Promise<number[]> {
-  const { rows } = await requirePool().query(
-    `select id from sessions where started_at < now() - make_interval(days => $1) and status = 'ended'`,
-    [Math.round(days)]
-  )
-  return rows.map((r) => Number(r.id))
-}
-
 // ---------------------------------------------------------------- search
 
 /**
- * Keyword search over uploaded notes, i.e. earlier sessions (BM25 via pg_textsearch
- * when available, else Postgres FTS). The running session is searched locally.
+ * Keyword search over every uploaded note, across projects (BM25 via pg_textsearch when
+ * available, else Postgres FTS). Answers don't use it: they stay within the active
+ * project, searched locally. It's here for tools and a future cross-project view.
  */
 export async function searchNotes(
   query: string,
@@ -285,7 +342,7 @@ export async function searchNotes(
   if (!q) return []
   const limit = opts.limit ?? 6
   const p = requirePool()
-  const cols = `n.id, n.session_id, n.capture_id, n.provenance, n.topic, n.body, n.created_at, f.name as file_name`
+  const cols = `n.id, n.project_id, n.capture_id, n.provenance, n.topic, n.body, n.created_at, f.name as file_name`
   const from = `notes n left join files f on f.id = n.file_id`
   let rows: Record<string, unknown>[] = []
   if (capabilities.textsearch === 'bm25') {
@@ -312,7 +369,7 @@ export async function searchNotes(
   }
   return rows.map((r) => ({
     id: Number(r.id),
-    sessionId: Number(r.session_id),
+    projectId: Number(r.project_id),
     captureId: r.capture_id == null ? null : Number(r.capture_id),
     provenance: r.provenance as NoteHit['provenance'],
     topic: (r.topic as string) ?? null,
@@ -325,8 +382,10 @@ export async function searchNotes(
 
 // ---------------------------------------------------------------- activity (hypertable)
 
+/** Where a session's time went: its projects' activity within the session's time range. */
 export async function insightsByTopic(
-  sessionId: number,
+  projectIds: number[],
+  range: { from: string; to: string },
   captureMs: number
 ): Promise<{ rows: InsightRow[]; source: 'aggregate' | 'raw' }> {
   const p = requirePool()
@@ -334,10 +393,15 @@ export async function insightsByTopic(
   const sql =
     source === 'aggregate'
       ? `select topic, sum(ticks)::bigint as ticks, max(max_dwell_ms) as max_dwell
-         from activity_by_minute where session_id = $1 group by topic order by ticks desc limit 6`
+         from activity_by_minute
+         where project_id = any($1::bigint[])
+           and bucket >= time_bucket('1 minute', $2::timestamptz) and bucket <= $3::timestamptz
+         group by topic order by ticks desc limit 6`
       : `select coalesce(topic, '') as topic, count(*)::bigint as ticks, max(dwell_ms) as max_dwell
-         from screen_activity where session_id = $1 group by 1 order by ticks desc limit 6`
-  const { rows } = await p.query(sql, [sessionId])
+         from screen_activity
+         where project_id = any($1::bigint[]) and time between $2::timestamptz and $3::timestamptz
+         group by 1 order by ticks desc limit 6`
+  const { rows } = await p.query(sql, [projectIds, range.from, range.to])
   return {
     source,
     rows: rows.map((r) => ({
@@ -348,13 +412,20 @@ export async function insightsByTopic(
   }
 }
 
-export async function stuckSpots(sessionId: number, minDwellMs: number): Promise<StuckSpot[]> {
+export async function stuckSpots(
+  projectIds: number[],
+  range: { from: string; to: string },
+  minDwellMs: number
+): Promise<StuckSpot[]> {
   const { rows } = await requirePool().query(
     `select s.created_at, coalesce(s.topic, '') as topic, s.suggestions,
             (select max(a.dwell_ms) from screen_activity a
-              where a.session_id = s.session_id and a.time between s.created_at - interval '10 minutes' and s.created_at) as dwell
-     from suggestion_sets s where s.session_id = $1 order by s.created_at desc limit 5`,
-    [sessionId]
+              where a.project_id = s.project_id
+                and a.time between s.created_at - interval '10 minutes' and s.created_at) as dwell
+     from suggestion_sets s
+     where s.project_id = any($1::bigint[]) and s.created_at between $2::timestamptz and $3::timestamptz
+     order by s.created_at desc limit 5`,
+    [projectIds, range.from, range.to]
   )
   return rows
     .filter((r) => Number(r.dwell ?? 0) >= minDwellMs)

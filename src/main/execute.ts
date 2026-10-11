@@ -27,7 +27,7 @@ const PAGE_CHARS_FOR_ANSWER = 60_000
 const FILE_CHARS_FOR_ANSWER = 40_000
 
 export interface ExecuteInput {
-  sessionId: number
+  projectId: number
   task: string
   kind: string
   title: string
@@ -65,7 +65,7 @@ export async function runAssistance(input: ExecuteInput): Promise<ExecuteResult>
     input.file
       ? fenceUntrusted(
           'added-file',
-          `A file the user added to the session a few minutes ago. Use it when the task is about it.\nName: ${input.file.name} (${input.file.kind})\n\n${input.file.body.slice(0, FILE_CHARS_FOR_ANSWER)}`
+          `A file the user added to this project a few minutes ago. Use it when the task is about it.\nName: ${input.file.name} (${input.file.kind})\n\n${input.file.body.slice(0, FILE_CHARS_FOR_ANSWER)}`
         )
       : '',
     input.selection && input.png
@@ -145,7 +145,7 @@ export async function runAssistance(input: ExecuteInput): Promise<ExecuteResult>
     inputTokens: usage.inputTokens,
     outputTokens: usage.outputTokens,
     contextChars: input.retrieved.chars,
-    sessionId: input.sessionId
+    projectId: input.projectId
   })
   return { output, inputTokens: usage.inputTokens, outputTokens: usage.outputTokens }
 }

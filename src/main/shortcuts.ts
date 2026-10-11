@@ -7,7 +7,7 @@ import { getState, setState } from './state'
 
 // Global keys (DESIGN.md §4). Only the fn family is global; ⌘ keys are handled by
 // the panel itself while it has focus. Until the native fn addon runs, ⌃⌥K / ⌃⌥P /
-// ⌃⌥Q do the same jobs. fn 1–9 (and always ⌃⌥1–9) jump to the session in that slot.
+// ⌃⌥Q do the same jobs. fn 1–9 (and always ⌃⌥1–9) switch to the project in that slot.
 
 export interface ShortcutResult {
   fn: boolean

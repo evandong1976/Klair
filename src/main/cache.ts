@@ -35,5 +35,9 @@ export const cache = {
   },
   delete: (key: string): void => {
     if (open()) delStmt?.run(key)
+  },
+  /** Delete every key matching a SQL LIKE pattern, e.g. "note:%:<hash>". */
+  deleteMatching: (pattern: string): void => {
+    if (open()) sqlite?.prepare('delete from cache where key like ?').run(pattern)
   }
 }

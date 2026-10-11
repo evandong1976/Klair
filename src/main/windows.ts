@@ -1,4 +1,13 @@
-import { app, BrowserWindow, nativeTheme, screen, shell, type Rectangle } from 'electron'
+import {
+  app,
+  BrowserWindow,
+  nativeTheme,
+  screen,
+  shell,
+  WebContentsView,
+  type Rectangle
+} from 'electron'
+import { existsSync, statSync } from 'fs'
 import { join } from 'path'
 import { is } from '@electron-toolkit/utils'
 
@@ -257,6 +266,72 @@ export function openSessions(): void {
     minHeight: 560
   })
   sessionsWin.on('closed', () => (sessionsWin = null))
+}
+
+// The Knowledge graph pane: a normal window (#/graph/<projectId>) with a project picker,
+// plus Graphify's own graph.html for the chosen project, shown in a sandboxed view
+// placed over the pane's graph area. graph.html is generated from captured text, so it
+// gets no preload and no Node, can't navigate away, and opens links in the browser.
+let graphWin: BrowserWindow | null = null
+let graphView: WebContentsView | null = null
+let graphViewFile: string | null = null
+let graphViewMtime = 0
+
+export function openGraph(projectId: number | null): void {
+  const route = projectId ? `graph/${projectId}` : 'graph'
+  if (graphWin && !graphWin.isDestroyed()) {
+    if (projectId)
+      void graphWin.webContents.executeJavaScript(`location.hash = '#/${route}'`).catch(() => {})
+    return graphWin.focus()
+  }
+  graphWin = appWindow(route, {
+    width: 1180,
+    height: 820,
+    resizable: true,
+    minWidth: 760,
+    minHeight: 560
+  })
+  graphWin.on('closed', () => {
+    graphWin = null
+    graphView = null
+    graphViewFile = null
+  })
+}
+
+/** Show `htmlPath` in the graph area (`rect`, window coordinates), or hide the view. */
+export function showGraphView(htmlPath: string | null, rect: Rectangle | null): void {
+  if (!graphWin || graphWin.isDestroyed()) return
+  if (!htmlPath || !rect || !existsSync(htmlPath)) {
+    graphView?.setVisible(false)
+    return
+  }
+  if (!graphView) {
+    graphView = new WebContentsView({
+      webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false }
+    })
+    const wc = graphView.webContents
+    wc.on('will-navigate', (e) => e.preventDefault())
+    wc.setWindowOpenHandler(({ url }) => {
+      if (/^https?:/.test(url)) void shell.openExternal(url)
+      return { action: 'deny' }
+    })
+    graphView.setBackgroundColor('#FBF7F5')
+    graphWin.contentView.addChildView(graphView)
+  }
+  // A different project, or the same one rebuilt since it was loaded.
+  const mtime = statSync(htmlPath).mtimeMs
+  if (graphViewFile !== htmlPath || graphViewMtime !== mtime) {
+    graphViewFile = htmlPath
+    graphViewMtime = mtime
+    void graphView.webContents.loadFile(htmlPath).catch(() => {})
+  }
+  graphView.setBounds({
+    x: Math.round(rect.x),
+    y: Math.round(rect.y),
+    width: Math.max(0, Math.round(rect.width)),
+    height: Math.max(0, Math.round(rect.height))
+  })
+  graphView.setVisible(true)
 }
 
 export function toggleTrayWindow(anchor: Rectangle): void {

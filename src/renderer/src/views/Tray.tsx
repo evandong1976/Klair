@@ -55,6 +55,7 @@ export function TrayWindow(): React.JSX.Element | null {
         p: () => void (s.observing === 'on' ? klair.pause() : klair.resume()),
         e: () => void klair.endSession(),
         o: () => void klair.openWindow('sessions'),
+        g: () => void klair.openGraph(),
         ',': () => void klair.openWindow('start'),
         l: () => void klair.openPanel(),
         '1': () => void klair.setDwellMs(DWELL[0].ms),
@@ -88,12 +89,19 @@ export function TrayWindow(): React.JSX.Element | null {
                 ? `${s.observing === 'paused' ? 'Paused' : s.saving ? 'Observing' : 'Not saving'} · ${minutes(elapsed)}`
                 : 'Not observing'}
             </PixelLabel>
-            <span className="text-[19px] font-extrabold">{s.session?.name ?? 'No session'}</span>
+            <span className="text-[19px] font-extrabold">{s.project?.name ?? 'No session'}</span>
           </div>
         </div>
         {s.session ? (
-          <span className="text-[13px] font-semibold text-ink-3">
-            {`Started ${timeLabel(s.session.startedAt)} · ${s.stats.tabs} tabs · ${s.stats.answers} answers`}
+          <span className="flex items-center justify-between gap-2 text-[13px] font-semibold text-ink-3">
+            {`Session since ${timeLabel(s.session.startedAt)} · project: ${s.stats.tabs} tabs · ${s.stats.answers} answers`}
+            <button
+              type="button"
+              onClick={() => void klair.openWindow('start')}
+              className="text-rose-text font-bold cursor-pointer"
+            >
+              Switch
+            </button>
           </span>
         ) : null}
         {s.session ? (
@@ -120,7 +128,7 @@ export function TrayWindow(): React.JSX.Element | null {
             className="h-11 text-[14px]"
             onClick={() => void klair.openWindow('start')}
           >
-            Start a session
+            Pick a project
           </Button>
         )}
       </header>
@@ -210,9 +218,9 @@ export function TrayWindow(): React.JSX.Element | null {
 
       <footer className="mt-auto pt-3 px-[18px] pb-4 flex flex-col gap-2.5">
         <span className="text-[12.5px] leading-[1.45] text-ink-3">
-          Screenshots stay on this Mac. A session is saved here while it runs and uploaded to your
-          TigerData database when it ends; an AI model sees new screens to take notes, and the
-          relevant ones to make ideas and answers.
+          Screenshots stay on this Mac. Each project is saved here and uploaded to your TigerData
+          database after each session; an AI model sees new screens to take notes, and the relevant
+          ones to make ideas and answers.
         </span>
         <div className="flex justify-between gap-3 text-[13px] font-bold">
           <button
@@ -221,6 +229,13 @@ export function TrayWindow(): React.JSX.Element | null {
             className="flex items-center gap-1.5 text-rose-text cursor-pointer"
           >
             All sessions <span className="text-[11px] text-muted">⌘O</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => void klair.openGraph()}
+            className="flex items-center gap-1.5 text-rose-text cursor-pointer"
+          >
+            Knowledge graph <span className="text-[11px] text-muted">⌘G</span>
           </button>
           <button
             type="button"

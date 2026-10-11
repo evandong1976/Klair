@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useState } from 'react'
-import type { SessionDetail, SessionListItem } from '../../../shared/types'
+import type { ProjectItem, SessionDetail, SessionListItem } from '../../../shared/types'
 import { Flower } from '../components/Flower'
 import { Button, PixelLabel } from '../components/ui'
 import { isMod, klair, timeLabel, useKlairState } from '../lib/useKlair'
 
 // Sessions window (Sessions.dc.html) + Session insights from the TigerData
-// continuous aggregate `activity_by_minute` (BUILD_PROMPT §4.6).
+// continuous aggregate `activity_by_minute` (BUILD_PROMPT §4.6). A session is the time
+// worked; its context lives in the projects worked in during it, each with its own
+// knowledge graph (the Knowledge graph button opens the pane on them).
 
 function dayLabel(iso: string): string {
   const d = new Date(iso)
@@ -22,22 +24,22 @@ function duration(a: string, b: string | null): string {
   return m >= 60 ? `${Math.floor(m / 60)} h ${m % 60} min` : `${m} min`
 }
 
-/** Where the session's records are: on this Mac while it runs, in TigerData once uploaded. */
-function uploadLine(s: SessionListItem, live: boolean): string {
-  if (live)
-    return 'Screenshots and this session are on this Mac; it goes to TigerData when it ends.'
-  switch (s.upload.status) {
+/** Where a project's records are: on this Mac, and in TigerData once uploaded. */
+function uploadLine(p: ProjectItem | undefined): string {
+  switch (p?.upload.status) {
     case 'synced':
-      return 'Screenshots on this Mac · notes and answers also in TigerData.'
+      return 'also in TigerData'
     case 'uploading':
-      return 'Screenshots on this Mac · uploading notes and answers to TigerData…'
+      return 'uploading to TigerData…'
     case 'failed':
-      return `On this Mac only for now: the TigerData upload failed${
-        s.upload.error ? ` (${s.upload.error})` : ''
-      }. Klair retries hourly and when you check connections.`
+      return `not uploaded yet${p.upload.error ? ` (${p.upload.error})` : ''}; Klair retries hourly`
     default:
-      return 'On this Mac · waiting to upload to TigerData.'
+      return 'on this Mac; uploads to TigerData after the session'
   }
+}
+
+function projectNames(s: SessionListItem): string {
+  return s.projects.length ? s.projects.map((p) => p.name).join(' · ') : 'No project'
 }
 
 function fmtSecs(s: number): string {
@@ -56,6 +58,7 @@ export function SessionsWindow(): React.JSX.Element {
   const [selected, setSelected] = useState<number | null>(null)
   const [detail, setDetail] = useState<SessionDetail | null>(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const [projects, setProjects] = useState<ProjectItem[]>([])
 
   const [listVersion, setListVersion] = useState(0)
 
@@ -76,6 +79,7 @@ export function SessionsWindow(): React.JSX.Element {
     const load = (): void => {
       if (selected === null) return
       klair.getSessionDetail(selected).then((d) => alive && setDetail(d))
+      klair.listProjects().then((l) => alive && setProjects(l))
     }
     load()
     const t = setInterval(load, 10_000)
@@ -107,6 +111,9 @@ export function SessionsWindow(): React.JSX.Element {
       if (k === 'n') {
         e.preventDefault()
         void klair.openWindow('start')
+      } else if (k === 'g' && detail?.mainProjectId) {
+        e.preventDefault()
+        void klair.openGraph(detail.mainProjectId)
       } else if (k === 'p' && live?.session) {
         e.preventDefault()
         void (live.observing === 'on' ? klair.pause() : klair.resume())
@@ -164,7 +171,7 @@ export function SessionsWindow(): React.JSX.Element {
                 <span
                   className={`text-[14.5px] ${it.id === selected ? 'font-bold' : 'font-semibold'}`}
                 >
-                  {it.name}
+                  {projectNames(it)}
                 </span>
                 <span className="text-[12.5px] text-ink-3">
                   {`${dayLabel(it.startedAt)} · ${
@@ -194,9 +201,34 @@ export function SessionsWindow(): React.JSX.Element {
                     ? `Observing since ${timeLabel(s.startedAt)}`
                     : `${dayLabel(s.startedAt)} · ${duration(s.startedAt, s.endedAt)}`}
                 </PixelLabel>
-                <h1 className="m-0 text-[30px] font-extrabold tracking-[-0.01em]">{s.name}</h1>
+                <h1 className="m-0 text-[30px] font-extrabold tracking-[-0.01em]">
+                  {projectNames(s)}
+                </h1>
+                {s.projects.length ? (
+                  <span className="no-drag flex flex-wrap gap-1.5 pt-1">
+                    {s.projects.map((p) => (
+                      <button
+                        key={p.id}
+                        type="button"
+                        title={`Open ${p.name}'s knowledge graph`}
+                        onClick={() => void klair.openGraph(p.id)}
+                        className="h-7 px-2.5 rounded-full border border-sage-line bg-sage-tint-2 text-[12.5px] font-semibold text-sage-deep cursor-pointer hover:bg-sage-tint"
+                      >
+                        {`${p.name} · ${Math.max(1, Math.round(p.ms / 60_000))} min`}
+                      </button>
+                    ))}
+                  </span>
+                ) : null}
               </div>
               <div className="no-drag flex flex-wrap gap-2">
+                <Button
+                  kind="primary"
+                  keyHint="⌘G"
+                  disabled={!detail?.mainProjectId}
+                  onClick={() => void klair.openGraph(detail?.mainProjectId ?? undefined)}
+                >
+                  Knowledge graph
+                </Button>
                 {isLive ? (
                   <Button
                     keyHint="⌘P"
@@ -206,7 +238,7 @@ export function SessionsWindow(): React.JSX.Element {
                   </Button>
                 ) : null}
                 <Button kind="danger" keyHint="⌘⌫" onClick={() => void del()}>
-                  {confirmDelete ? 'Press again to delete' : 'Delete session'}
+                  {confirmDelete ? 'Press again: projects keep their data' : 'Delete session'}
                 </Button>
               </div>
             </header>
@@ -231,7 +263,14 @@ export function SessionsWindow(): React.JSX.Element {
                         {timeLabel(t.at)}
                       </span>
                       <span className="flex flex-col gap-1.5 min-w-0">
-                        <span className="text-[15px] font-semibold break-words">{t.title}</span>
+                        <span className="text-[15px] font-semibold break-words">
+                          {t.title}
+                          {t.project && s.projects.length > 1 ? (
+                            <span className="ml-2 align-middle text-[11px] font-bold py-0.5 px-[7px] rounded-[5px] bg-sage-tint text-sage-deep">
+                              {t.project}
+                            </span>
+                          ) : null}
+                        </span>
                         <span className="flex gap-1.5 flex-wrap items-center">
                           {t.kind === 'asked' ? (
                             <>
@@ -344,8 +383,18 @@ export function SessionsWindow(): React.JSX.Element {
                 <section className="rounded-[18px] bg-white border border-line-2 p-[18px] flex flex-col gap-2.5">
                   <h2 className="m-0 font-pixel font-normal text-[11px] text-sage-deep">Privacy</h2>
                   <p className="m-0 text-[14px] leading-[1.5]">
-                    {`${uploadLine(detail.session, isLive)} Deleted after ${detail.privacy.retentionDays} days.`}
+                    {`Screenshots and files stay on this Mac.${
+                      isLive ? ' Projects upload to TigerData when the session ends.' : ''
+                    } Kept for ${detail.privacy.retentionDays} days.`}
                   </p>
+                  <ul className="m-0 p-0 list-none flex flex-col gap-1 text-[13.5px]">
+                    {s.projects.map((p) => (
+                      <li key={p.id}>
+                        <span className="font-semibold">{p.name}</span>
+                        <span className="text-muted">{` · ${uploadLine(projects.find((x) => x.id === p.id))}`}</span>
+                      </li>
+                    ))}
+                  </ul>
                   <p className="m-0 text-[14px] leading-[1.5]">
                     {`Sent to the AI model ${detail.privacy.sentToClaude} times this session: new screens for notes, plus ideas and answers.`}
                   </p>

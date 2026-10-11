@@ -19,7 +19,7 @@ import type {
 import { createHash, randomUUID } from 'crypto'
 import { cache } from './cache'
 import { captureArea, CaptureLoop, type Frame } from './capture'
-import { belongsInSession, changeJudgeEnabled, meaningfulChange, thumbnail } from './judge'
+import { belongsInProject, changeJudgeEnabled, meaningfulChange, thumbnail } from './judge'
 import { config } from './config'
 import { ControllerCore, type Effect } from './controller-core'
 import * as db from './db'
@@ -36,15 +36,15 @@ import {
   type PageContext,
   type VisionNote
 } from './notes'
-import { filesDir, notesDir, SESSION_DIR_PREFIX, sessionDir, sessionsRoot, shotsDir } from './paths'
+import { filesDir, notesDir, PROJECT_DIR_PREFIX, projectDir, projectsRoot, shotsDir } from './paths'
 import { retrieve } from './retrieve'
 import { getState, setState } from './state'
 import { suggestionsFromNote } from './suggest'
-import { deleteRemote, uploadPending, uploadSession } from './upload'
+import { deleteRemote, uploadPending } from './upload'
 import * as windows from './windows'
 
-// The background controller: owns the session, the suggestion set, execution state
-// and every write. Decisions about *when* things may happen live in ControllerCore;
+// The background controller: owns the session (time) and the active project (where
+// everything captured goes), the suggestion set, execution state and every write. Decisions about *when* things may happen live in ControllerCore;
 // this module carries out the effects.
 
 const core = new ControllerCore({
@@ -63,7 +63,10 @@ interface CaptureMem {
   source: store.CaptureSource
 }
 
+/** The running session: only a span of time. */
 let sessionId: number | null = null
+/** The active project: everything captured now goes into it. */
+let projectId: number | null = null
 let loop: CaptureLoop | null = null
 let tickTimer: NodeJS.Timeout | null = null
 let flushTimer: NodeJS.Timeout | null = null
@@ -122,11 +125,11 @@ function apply(effects: Effect[]): void {
         break
       case 'publishSuggestions':
         setState({ suggestions: e.set, nudge: getState().panel === 'closed' })
-        if (sessionId) {
-          const sid = sessionId
+        if (projectId) {
+          const sid = projectId
           store
             .insertSuggestionSet({
-              sessionId: sid,
+              projectId: sid,
               captureId: e.set.captureId,
               generationId: e.set.generationId,
               topic: e.set.topic,
@@ -168,35 +171,40 @@ function apply(effects: Effect[]): void {
   }
 }
 
-// ------------------------------------------------------------------ session lifecycle
+// ------------------------------------------------------------------ projects & sessions
+//
+// A project ("ML", "SW") holds everything: captures, notes, ideas, answers, pages and
+// files go into the active project. A session is only the time the user spends
+// working, possibly across several projects; project_spans records which was active.
 
-/** Why a session can't run right now, shown to the user; null when it can. */
+/** Why Klair can't observe right now, shown to the user; null when it can. */
 async function cannotObserve(): Promise<Notice | null> {
   const health = lastHealth() ?? (await runHealth({ skipModel: true }))
   if (!health.checks.find((c) => c.id === 'screen' && c.status === 'ok')) {
     return { kind: 'screen-access' }
   }
-  // The session is saved on this Mac (SQLite) and uploaded to TigerData when it ends,
-  // so only the local store has to work to start.
+  // Everything is saved on this Mac (SQLite) first, so only the local store has to work.
   const localStore = store.localStatus()
   return localStore.ok ? null : { kind: 'not-saving', detail: localStore.detail }
 }
 
-/** Make `s` the live session and start observing. Nothing from another session carries over. */
-async function enterSession(s: { id: number; name: string; startedAt: string }): Promise<void> {
-  sessionId = s.id
+/** Make `p` the active project. Nothing from the previous project's screen carries over. */
+async function enterProject(p: { id: number; name: string; slot: number | null }): Promise<void> {
+  await flushActivity() // buffered activity belongs to the project it was seen in
+  cancelExecution()
+  projectId = p.id
   captures.clear()
   notePromises.clear()
   livePage = null
   currentTopic = null
   notedThumb = null
-  core.unpin() // a selection from an earlier session isn't this session's context
+  core.resetContext()
   lastOutput = null
   lastRun = null
+  lastAnswerCaptureId = null
+  offered.clear() // download offers belong to the project they appeared in
   setState({
-    session: { id: s.id, name: s.name, startedAt: s.startedAt, status: 'active' },
-    observing: 'on',
-    saving: true,
+    project: { id: p.id, name: p.name, slot: p.slot },
     notice: null,
     suggestions: null,
     answer: null,
@@ -204,61 +212,71 @@ async function enterSession(s: { id: number; name: string; startedAt: string }):
     nudge: false,
     selection: null,
     downloads: [],
-    stats: await store.sessionStats(s.id).catch(() => ({ captures: 0, answers: 0, tabs: 0 }))
+    stats: await store.projectStats(p.id).catch(() => ({ captures: 0, answers: 0, tabs: 0 }))
   })
-  offered.clear() // download offers belong to the session they appeared in
-  windows.closeStart()
-  beginObserving()
-}
-
-export async function startSession(name: string): Promise<void> {
-  const blocked = await cannotObserve()
-  if (blocked) {
-    setState({ notice: blocked, ...(blocked.kind === 'not-saving' ? { saving: false } : {}) })
-    return
-  }
-  try {
-    if (sessionId) await endSession()
-    const label = name.trim() || 'Session'
-    const s = await store.createSession(label)
-    await enterSession({ id: s.id, name: label, startedAt: s.startedAt })
-  } catch (err) {
-    persistenceFailed(err)
-  }
 }
 
 /**
- * Pick up a session where it was left. Whatever was running is ended first (and
- * uploaded), so only one session ever observes and each keeps its own context.
+ * Work in project `p`: starts a session if none is running, otherwise switches the
+ * active project within it (the session keeps running).
  */
-export async function continueSession(id: number): Promise<void> {
-  if (id === sessionId) {
-    windows.closeStart()
-    if (getState().observing === 'paused') await resume()
-    return
-  }
+async function workIn(p: { id: number; name: string; slot: number | null }): Promise<void> {
   const blocked = await cannotObserve()
   if (blocked) {
     setState({ notice: blocked, ...(blocked.kind === 'not-saving' ? { saving: false } : {}) })
     return
   }
   try {
-    const target = await store.getSession(id)
-    if (!target) return
-    if (sessionId) await endSession()
-    await store.reopenSession(id)
-    await enterSession({ id, name: target.name, startedAt: target.startedAt })
-    flash({ kind: 'switched', detail: target.name })
+    if (!sessionId) {
+      const s = await store.startSession()
+      sessionId = s.id
+      setState({
+        session: { id: s.id, startedAt: s.startedAt, status: 'active' },
+        observing: 'on',
+        saving: true
+      })
+      await enterProject(p)
+      await store.openSpan(s.id, p.id)
+      windows.closeStart()
+      beginObserving()
+      return
+    }
+    windows.closeStart()
+    if (p.id !== projectId) {
+      await enterProject(p)
+      await store.openSpan(sessionId, p.id)
+      flash({ kind: 'switched', detail: p.name })
+    }
+    if (getState().observing === 'paused') await resume()
   } catch (err) {
     persistenceFailed(err)
   }
 }
 
-/** fn 1–9 / ⌃⌥1–9: jump to the session in that slot, from anywhere. */
+/** A new project with this name, worked in from now on. */
+export async function startSession(name: string): Promise<void> {
+  try {
+    await workIn(await store.createProject(name.trim() || 'Project'))
+  } catch (err) {
+    persistenceFailed(err)
+  }
+}
+
+/** The project everything goes into right now (null when no session runs). */
+export function activeProjectId(): number | null {
+  return projectId
+}
+
+export async function switchProject(id: number): Promise<void> {
+  const p = await store.getProject(id).catch(() => null)
+  if (p) await workIn(p)
+}
+
+/** fn 1–9 / ⌃⌥1–9: work in the project in that slot, from anywhere. */
 export async function switchToSlot(slot: number): Promise<void> {
-  const target = await store.sessionBySlot(slot).catch(() => null)
-  if (!target) return flash({ kind: 'switched', detail: `No session on ${slot}` })
-  await continueSession(target.id)
+  const p = await store.projectBySlot(slot).catch(() => null)
+  if (!p) return flash({ kind: 'switched', detail: `No project on ${slot}` })
+  await workIn(p)
 }
 
 function beginObserving(): void {
@@ -300,19 +318,22 @@ export async function togglePause(): Promise<void> {
   else await resume()
 }
 
+/** Stop the session (the time). Every project worked in gets its graph built and uploaded. */
 export async function endSession(): Promise<void> {
   if (!sessionId) return
-  const id = sessionId
+  const sid = sessionId
   stopTimers()
   await flushActivity()
   core.setObserving(false)
   core.setPanelOpen(false) // the panel closes below; a held screen change dies with the session
   cancelExecution()
   sessionId = null
+  projectId = null
   livePage = null
-  core.unpin()
+  core.resetContext()
   setState({
     session: null,
+    project: null,
     observing: 'off',
     suggestions: null,
     nudge: false,
@@ -323,48 +344,56 @@ export async function endSession(): Promise<void> {
   })
   offered.clear()
   windows.hidePanel()
-  await store.setSessionStatus(id, 'ended').catch(() => {})
-  scheduleIndex(id, { now: true })
-  void uploadSession(id)
+  await store.setSessionStatus(sid, 'ended').catch(() => {})
+  for (const p of await store.sessionProjects(sid).catch(() => []))
+    scheduleIndex(p.id, { now: true })
+  void uploadPending()
 }
 
+/** Removes a session's time record only: its projects keep their context. */
 export async function deleteSession(id: number): Promise<void> {
   if (id === sessionId) await endSession()
+  await store.deleteSession(id)
+}
+
+/** Delete a project and everything in it: rows, files, graph, cache entries, TigerData copy. */
+export async function deleteProject(id: number): Promise<void> {
+  if (id === projectId) await endSession()
   cancelIndex(id)
-  let hashes: string[] = []
   let remoteId: number | null = null
+  let hashes: string[] = []
   try {
-    remoteId = (await store.getSession(id))?.upload.remoteId ?? null
+    remoteId = (await store.getProject(id))?.upload.remoteId ?? null
     hashes = await store.captureHashes(id)
-    await store.deleteSessionRows(id)
+    await store.deleteProjectRows(id)
   } catch (err) {
-    console.error('delete session rows failed:', err)
+    console.error('delete project failed:', err)
     throw err
   }
   // Its TigerData copy goes too (queued if TigerData can't be reached right now).
   if (remoteId) await deleteRemote(remoteId)
-  for (const h of hashes) cache.delete(`note:${h}`)
-  await rm(sessionDir(id), { recursive: true, force: true })
+  for (const h of hashes) cache.deleteMatching(`note:%:${h}`)
+  await rm(projectDir(id), { recursive: true, force: true })
 }
 
-/** Delete expired sessions everywhere: local rows and files, Graphify output, cache, TigerData. */
+/**
+ * Remove context older than the retention period, in every project (the projects stay),
+ * and old session time records. Affected projects get their graph rebuilt.
+ */
 export async function retentionSweep(): Promise<void> {
   try {
-    for (const id of await store.expiredSessionIds(config.retentionDays)) await deleteSession(id)
+    for (const id of await store.expiredSessionIds(config.retentionDays))
+      await store.deleteSession(id)
+    const pruned = await store.pruneOlderThan(config.retentionDays)
+    for (const path of pruned.paths) await unlink(path).catch(() => {})
+    for (const h of pruned.hashes) cache.deleteMatching(`note:%:${h}`)
+    for (const p of pruned.projects) scheduleIndex(p, { now: true, force: true })
   } catch (err) {
     console.warn('retention sweep failed:', (err as Error).message)
   }
-  // TigerData sessions with no copy on this Mac (older builds, other machines).
-  if (!db.getPool()) return
-  try {
-    for (const id of await db.expiredSessionIds(config.retentionDays))
-      await db.deleteSessionRows(id)
-  } catch (err) {
-    console.warn('tigerdata retention sweep failed:', (err as Error).message)
-  }
 }
 
-/** End sessions a crash or quit left open, then upload everything not yet in TigerData. */
+/** End sessions a crash or quit left open, then upload every project not yet in TigerData. */
 export async function syncEnded(): Promise<void> {
   try {
     await store.endAbandonedSessions(sessionId)
@@ -374,17 +403,17 @@ export async function syncEnded(): Promise<void> {
   await uploadPending()
 }
 
-/** Fix incomplete writes from a crash: orphan files, half-committed rows, deleted sessions. */
+/** Fix incomplete writes from a crash: orphan files, half-committed rows, deleted projects. */
 export async function reconcileLocal(): Promise<void> {
-  const root = sessionsRoot()
+  const root = projectsRoot()
   if (!existsSync(root)) return
   for (const name of await readdir(root)) {
-    if (!name.startsWith(SESSION_DIR_PREFIX)) continue // folders from older builds
-    const id = Number(name.slice(SESSION_DIR_PREFIX.length))
+    if (!name.startsWith(PROJECT_DIR_PREFIX)) continue
+    const id = Number(name.slice(PROJECT_DIR_PREFIX.length))
     if (!Number.isInteger(id) || id <= 0) continue
     try {
-      if (!(await store.sessionExists(id))) {
-        await rm(sessionDir(id), { recursive: true, force: true })
+      if (!(await store.projectExists(id))) {
+        await rm(projectDir(id), { recursive: true, force: true })
         continue
       }
       const rows = await store.capturePaths(id)
@@ -399,7 +428,7 @@ export async function reconcileLocal(): Promise<void> {
         await store.setCaptureStatus(r.id, existsSync(r.path) ? 'committed' : 'failed')
       }
     } catch (err) {
-      console.warn(`reconcile session ${id} failed:`, (err as Error).message)
+      console.warn(`reconcile project ${id} failed:`, (err as Error).message)
     }
   }
 }
@@ -425,9 +454,9 @@ async function flushActivity(): Promise<void> {
 }
 
 async function refreshStats(): Promise<void> {
-  if (!sessionId) return
+  if (!projectId) return
   try {
-    setState({ stats: await store.sessionStats(sessionId) })
+    setState({ stats: await store.projectStats(projectId) })
   } catch {
     /* stats are cosmetic */
   }
@@ -457,13 +486,13 @@ function onCaptureError(err: Error): void {
 
 async function onFrame(frame: Frame): Promise<void> {
   captureFailures = 0
-  const sid = sessionId
+  const sid = projectId
   if (!sid || !getState().saving) return
   const now = Date.now()
   lastMeta = frame.meta
   const row: store.ActivityRow = {
     time: frame.at,
-    sessionId: sid,
+    projectId: sid,
     captureId: null,
     appName: frame.meta.appName,
     windowTitle: frame.meta.windowTitle,
@@ -483,7 +512,7 @@ async function onFrame(frame: Frame): Promise<void> {
     row.dwellMs = now - lastChangeAt
     return
   }
-  if (sid !== sessionId) return // the session ended or switched while that was decided
+  if (sid !== projectId) return // the project switched or the session ended meanwhile
   notedThumb = thumb
   lastChangeAt = now
 
@@ -515,11 +544,11 @@ async function onFrame(frame: Frame): Promise<void> {
 }
 
 /**
- * What this session has covered so far, for the note model: it lets the ideas for a new
- * screen build on the session (connections, follow-up questions) rather than treat
- * every page as the first one. Only this session's notes are read.
+ * What this project has covered so far, for the note model: it lets the ideas for a new
+ * screen build on the project (connections, follow-up questions) rather than treat
+ * every page as the first one. Only this project's notes are read.
  */
-async function sessionContext(sid: number): Promise<string> {
+async function projectContext(sid: number): Promise<string> {
   const notes = await store.recentNotes(sid, 24).catch(() => [])
   const seen = new Set<string>()
   const lines: string[] = []
@@ -531,17 +560,17 @@ async function sessionContext(sid: number): Promise<string> {
     if (lines.length === 8) break
   }
   if (!lines.length) return ''
-  const name = getState().session?.name ?? 'Session'
-  return `Session "${name}". Covered earlier, most recent first:\n${lines.join('\n')}`
+  const name = getState().project?.name ?? 'Project'
+  return `Project "${name}". Covered earlier, most recent first:\n${lines.join('\n')}`
 }
 
 async function noteFor(sid: number, mem: CaptureMem, frame: Frame): Promise<VisionNote | null> {
   try {
     const page = livePage && Date.now() - livePage.at < LIVE_PAGE_MS ? livePage : null
-    const soFar = await sessionContext(sid)
+    const soFar = await projectContext(sid)
     const note = await makeVisionNote(frame.png, frame.hash, frame.meta, sid, page, {
       selection: mem.source === 'selection',
-      sessionContext: soFar
+      projectContext: soFar
     })
     mem.note = note
     currentTopic = note.topic
@@ -579,7 +608,7 @@ async function remember(
     mem.source === 'selection' ||
     !changeJudgeEnabled ||
     !soFar ||
-    (await belongsInSession(soFar, note.topic, note.note, sid))
+    (await belongsInProject(soFar, note.topic, note.note, sid))
   if (!belongs) {
     console.log(`kept out of session context: ${note.topic}`)
     await store.setCaptureNote(mem.id, note.note, null)
@@ -602,7 +631,7 @@ async function remember(
   )
   await store.setCaptureNote(mem.id, note.note, file)
   await store.insertNote({
-    sessionId: sid,
+    projectId: sid,
     captureId: mem.id,
     provenance: 'observed',
     topic: note.topic,
@@ -619,7 +648,7 @@ async function remember(
 // it's cleared or replaced.
 
 export function startSelection(): void {
-  if (!sessionId || getState().selecting) return
+  if (!projectId || getState().selecting) return
   setState({ selecting: true })
   windows.stepAsidePanel()
   windows.showSelectionOverlay()
@@ -641,7 +670,7 @@ function showPanelAgain(): void {
 }
 
 export async function finishSelection(rect: SelectionRect): Promise<void> {
-  const sid = sessionId
+  const sid = projectId
   if (!getState().selecting) return
   const overlay = windows.hideSelectionOverlay()
   setState({ selecting: false })
@@ -740,7 +769,7 @@ function setOffer(id: string, patch: Partial<DownloadOffer> | null): void {
 }
 
 function onDownload(d: Download): void {
-  if (!sessionId || getState().observing !== 'on') return
+  if (!projectId || getState().observing !== 'on') return
   const id = randomUUID()
   offered.set(id, d)
   const offer: DownloadOffer = {
@@ -773,7 +802,7 @@ function sha1File(path: string): Promise<string> {
 
 export async function addDownload(id: string): Promise<void> {
   const d = offered.get(id)
-  const sid = sessionId
+  const sid = projectId
   if (!d || !sid) return setOffer(id, null)
   const offer = getState().downloads.find((o) => o.id === id)
   if (!offer || offer.status === 'adding') return
@@ -800,7 +829,7 @@ export async function addDownload(id: string): Promise<void> {
       truncated = out.truncated
     }
     const fileId = await store.insertFile({
-      sessionId: sid,
+      projectId: sid,
       name: d.name,
       kind,
       size: st.size,
@@ -827,7 +856,7 @@ export async function addDownload(id: string): Promise<void> {
     )
     await store.setFileNotePath(fileId, file)
     await store.insertNote({
-      sessionId: sid,
+      projectId: sid,
       fileId,
       provenance: 'observed',
       topic: d.name.slice(0, 80),
@@ -871,7 +900,7 @@ export async function onBrowserPage(p: {
   text: string
   truncated: boolean
 }): Promise<{ stored: boolean; reason?: 'no-session' | 'paused' | 'duplicate' }> {
-  const sid = sessionId
+  const sid = projectId
   if (!sid) return { stored: false, reason: 'no-session' }
   const s = getState()
   if (s.observing !== 'on' || !s.saving) return { stored: false, reason: 'paused' }
@@ -885,7 +914,7 @@ export async function onBrowserPage(p: {
   }
   try {
     const id = await store.insertPage({
-      sessionId: sid,
+      projectId: sid,
       url: p.url,
       title,
       description: p.description,
@@ -909,7 +938,7 @@ export async function onBrowserPage(p: {
     )
     await store.setPageNotePath(id, file)
     await store.insertNote({
-      sessionId: sid,
+      projectId: sid,
       provenance: 'observed',
       topic: title.slice(0, 80),
       body: `Page "${title}" (${p.url}), full text from Chrome:\n\n${p.text}`
@@ -937,7 +966,7 @@ function pageSource(title: string, captureId: number | null): Provenance {
 // ------------------------------------------------------------------ suggestions
 
 async function doSuggest(generationId: number, captureId: number): Promise<void> {
-  const sid = sessionId
+  const sid = projectId
   if (!sid) return
   try {
     const note = await (notePromises.get(captureId) ?? Promise.resolve(null))
@@ -1069,7 +1098,7 @@ async function execute(run: {
   task: string
   previous?: AnswerOutput | null
 }): Promise<void> {
-  const sid = sessionId
+  const sid = projectId
   cancelExecution(false)
   lastRun = run
   const token = ++execToken
@@ -1099,7 +1128,7 @@ async function execute(run: {
   if (sid) {
     actionSaved = store
       .insertAction({
-        sessionId: sid,
+        projectId: sid,
         captureId: run.captureId,
         suggestionSetId: run.set ? (setDbIds.get(run.set.id) ?? null) : null,
         kind: run.kind,
@@ -1118,7 +1147,7 @@ async function execute(run: {
     const file = sid ? await recentFile(sid) : null
     const retrieved = sid
       ? await retrieve(`${img.topic} ${run.task}`.slice(0, 300), {
-          sessionId: sid,
+          projectId: sid,
           excludeCaptureId: run.captureId
         })
       : {
@@ -1155,7 +1184,7 @@ async function execute(run: {
     if (retrieved.historyUnavailable) notice({ kind: 'no-history' })
 
     const result = await runAssistance({
-      sessionId: sid ?? 0,
+      projectId: sid ?? 0,
       task: run.task,
       kind: run.kind,
       title: base.title,
@@ -1224,7 +1253,7 @@ async function execute(run: {
       )
       void file
       await store.insertNote({
-        sessionId: sid,
+        projectId: sid,
         captureId: run.captureId,
         actionId,
         provenance: 'assistant',
@@ -1323,40 +1352,40 @@ export async function sessionDetail(id: number): Promise<SessionDetail | null> {
       store.stuckSpots(id, stuckMs),
       'raw' as const
     ])
-  // An uploaded session's insights come from TigerData (the activity_by_minute
-  // continuous aggregate); a running or not-yet-uploaded one is read on this Mac.
-  const remoteId = session.upload.status === 'synced' ? session.upload.remoteId : null
-  const insights = remoteId
-    ? Promise.all([
-        db.insightsByTopic(remoteId, config.captureMs),
-        db.stuckSpots(remoteId, stuckMs)
-      ]).then(
-        ([t, st]): [InsightRow[], StuckSpot[], 'aggregate' | 'raw'] => [t.rows, st, t.source],
-        localInsights
-      )
-    : localInsights()
+  // Once every project in the session is uploaded, its insights come from TigerData
+  // (the activity_by_minute continuous aggregate, over the session's time range);
+  // otherwise they are read on this Mac.
+  const projects = await Promise.all(session.projects.map((p) => store.getProject(p.id)))
+  const remoteIds = projects.map((p) => (p?.upload.status === 'synced' ? p.upload.remoteId : null))
+  const range = { from: session.startedAt, to: session.endedAt ?? new Date().toISOString() }
+  const insights =
+    remoteIds.length && remoteIds.every((r) => r !== null) && db.getPool()
+      ? Promise.all([
+          db.insightsByTopic(remoteIds as number[], range, config.captureMs),
+          db.stuckSpots(remoteIds as number[], range, stuckMs)
+        ]).then(
+          ([t, st]): [InsightRow[], StuckSpot[], 'aggregate' | 'raw'] => [t.rows, st, t.source],
+          localInsights
+        )
+      : localInsights()
   const [timeline, sent, [byTopicRows, stuck, source]] = await Promise.all([
     store.timeline(id),
     store.sentToClaudeCount(id),
     insights.catch((): [InsightRow[], StuckSpot[], 'raw'] => [[], [], 'raw'])
   ])
-  const byTopic = { rows: byTopicRows, source }
   const live = id === sessionId
   const lastSeen = [...timeline].reverse().find((t) => t.kind !== 'asked')
   return {
     session,
+    mainProjectId: session.projects[0]?.id ?? null,
     timeline,
     holding: {
       onScreen: live ? (lastMeta.windowTitle ?? currentTopic ?? '—') : (lastSeen?.title ?? '—'),
-      topic: live ? (currentTopic ?? '—') : (byTopic.rows[0]?.topic ?? '—'),
+      topic: live ? (currentTopic ?? '—') : (byTopicRows[0]?.topic ?? '—'),
       related: timeline.filter((t) => t.kind === 'switched').slice(-1)[0]?.title ?? '—'
     },
     privacy: { sentToClaude: sent, retentionDays: config.retentionDays },
-    insights: {
-      byTopic: byTopic.rows,
-      stuck,
-      source: byTopic.rows.length ? byTopic.source : 'none'
-    }
+    insights: { byTopic: byTopicRows, stuck, source: byTopicRows.length ? source : 'none' }
   }
 }
 

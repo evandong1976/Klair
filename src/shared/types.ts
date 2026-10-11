@@ -55,7 +55,7 @@ export type NoticeKind =
   | 'not-saving'
   | 'partial-page'
   | 'stale'
-  | 'switched' // just moved to another session; detail is its name
+  | 'switched' // just moved to another project; detail is its name
 
 export interface Notice {
   kind: NoticeKind
@@ -82,15 +82,23 @@ export interface HealthReport {
   }
 }
 
+/** A session is only time: when it started and whether it's running. */
 export interface SessionInfo {
   id: number
-  name: string
   startedAt: string
   status: 'active' | 'paused' | 'ended'
 }
 
+/** The project everything captured right now goes into. */
+export interface ProjectInfo {
+  id: number
+  name: string
+  slot: number | null
+}
+
 export interface KlairState {
   session: SessionInfo | null
+  project: ProjectInfo | null
   observing: ObservingState
   saving: boolean // false → "This session isn't being saved"
   flower: FlowerMode
@@ -136,21 +144,44 @@ export interface SelectionRect {
 }
 
 /**
- * Where an ended session stands with TigerData. Sessions are saved on the Mac (SQLite)
- * while they run and uploaded when they end: local → uploading → synced, or failed
- * (retried later).
+ * Where a project stands with TigerData. Projects are saved on the Mac (SQLite) and
+ * uploaded after each session they were worked in: local (changed) → uploading →
+ * synced, or failed (retried later).
  */
 export type UploadStatus = 'local' | 'uploading' | 'synced' | 'failed'
 
-export interface SessionListItem {
+export interface ProjectItem {
   id: number
   name: string
+  /** 1–9 on the fn 1–9 / ⌃⌥1–9 project switcher; null when all nine are taken. */
+  slot: number | null
+  createdAt: string
+  lastUsedAt: string | null
+  notes: number
+  upload: { status: UploadStatus; error: string | null; remoteId: number | null }
+}
+
+/** A session: a span of time, and the projects worked in during it (longest first). */
+export interface SessionListItem {
+  id: number
   startedAt: string
   endedAt: string | null
   status: SessionInfo['status']
-  /** 1–9 on the fn 1–9 / ⌃⌥1–9 session switcher; null when all nine are taken. */
-  slot: number | null
-  upload: { status: UploadStatus; error: string | null; remoteId: number | null }
+  projects: { id: number; name: string; ms: number }[]
+}
+
+/** A project's Graphify graph, for the Knowledge graph pane. */
+export interface ProjectGraph {
+  projectId: number
+  name: string
+  notes: number
+  /** none: not built yet · building · ready · failed */
+  status: 'none' | 'building' | 'ready' | 'failed'
+  nodes: number | null
+  edges: number | null
+  communities: number | null
+  builtAt: string | null
+  detail: string | null
 }
 
 export interface TimelineItem {
@@ -160,6 +191,8 @@ export interface TimelineItem {
   detail: string
   actionId?: number
   status?: AnswerStatus
+  /** The project it went into. */
+  project?: string
 }
 
 export interface InsightRow {
@@ -177,13 +210,15 @@ export interface StuckSpot {
 
 export interface SessionDetail {
   session: SessionListItem
+  /** The project the Knowledge graph button opens: the one worked in longest. */
+  mainProjectId: number | null
   timeline: TimelineItem[]
   holding: { onScreen: string; topic: string; related: string }
   privacy: { sentToClaude: number; retentionDays: number }
   insights: { byTopic: InsightRow[]; stuck: StuckSpot[]; source: 'aggregate' | 'raw' | 'none' }
 }
 
-export type WindowName = 'start' | 'sessions'
+export type WindowName = 'start' | 'sessions' | 'graph'
 export type SettingsPane = 'screen' | 'input-monitoring' | 'keyboard' | 'privacy'
 
 /** Everything the renderer may ask of the main process. */
@@ -206,13 +241,28 @@ export interface KlairApi {
   setPanelSize(width: number, height: number): Promise<void>
   setFlowerInteractive(interactive: boolean): Promise<void>
 
+  /** Make a project with this name and work in it (starting a session if none runs). */
   startSession(name: string): Promise<void>
-  /** Continue an existing session; whatever was running is ended first. */
-  continueSession(id: number): Promise<void>
+  /** Work in this project: switches within the running session, or starts one. */
+  switchProject(id: number): Promise<void>
   pause(): Promise<void>
   resume(): Promise<void>
   endSession(): Promise<void>
+  /** Removes a session's time record; its projects keep their context. */
   deleteSession(id: number): Promise<void>
+  listProjects(): Promise<ProjectItem[]>
+  /** Delete a project and everything in it, here and in TigerData. */
+  deleteProject(id: number): Promise<void>
+  /** Open the Knowledge graph pane on this project (or the active one). */
+  openGraph(projectId?: number): Promise<void>
+  projectGraph(projectId: number): Promise<ProjectGraph | null>
+  /** Build the project's graph now. */
+  rebuildGraph(projectId: number): Promise<void>
+  /**
+   * Show a project's Graphify view in the pane's graph area (window coordinates), or
+   * hide it (null): the view is a separate, sandboxed page placed over that area.
+   */
+  showGraph(projectId: number | null, rect: SelectionRect | null): Promise<void>
   listSessions(): Promise<SessionListItem[]>
   getSessionDetail(id: number): Promise<SessionDetail | null>
   setDwellMs(ms: number): Promise<void>
@@ -258,13 +308,19 @@ export const KLAIR_INVOKE_METHODS: KlairInvokeMethod[] = [
   'setPanelSize',
   'setFlowerInteractive',
   'startSession',
-  'continueSession',
+  'switchProject',
   'pause',
   'resume',
   'endSession',
   'deleteSession',
   'listSessions',
   'getSessionDetail',
+  'listProjects',
+  'deleteProject',
+  'openGraph',
+  'projectGraph',
+  'rebuildGraph',
+  'showGraph',
   'setDwellMs',
   'setQuiet',
   'setToggleKey',

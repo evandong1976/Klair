@@ -1,12 +1,13 @@
 import type { PoolClient } from 'pg'
-import { capabilities, deleteSessionRows, getPool, requirePool } from './db'
+import { capabilities, deleteProjectRows, getPool, requirePool } from './db'
 import * as local from './local'
 
-// Copies an ended session from the Mac's SQLite store to TigerData, all or nothing,
-// in one transaction. Each table goes up in a single insert (jsonb_to_recordset), with
-// local ids carried along so foreign keys can be remapped to TigerData's ids.
-// A retry first removes any earlier copy with the same local_key, so a session is
-// never stored twice. On success the local session records its TigerData id.
+// Copies a project from the Mac's SQLite store to TigerData, all or nothing, in one
+// transaction: every row of its context plus its time spans. Each table goes up in a
+// single insert (jsonb_to_recordset), with local ids carried along so foreign keys can
+// be remapped to TigerData's ids. The earlier copy with the same local_key is replaced,
+// so a project is never stored twice. Projects upload after each session they were
+// worked in (and when retried); on success the local project records its TigerData id.
 
 const running = new Map<number, Promise<boolean>>()
 let sweep: Promise<void> | null = null
@@ -25,19 +26,31 @@ async function insertRows(client: PoolClient, sql: string, rows: Row[]): Promise
 const remap = (map: IdMap, id: unknown): number | null =>
   id == null ? null : (map.get(Number(id)) ?? null)
 
-async function copy(client: PoolClient, data: local.SessionExport): Promise<number> {
-  const s = data.session
-  await client.query(`delete from sessions where local_key = $1`, [s.local_key])
+async function copy(client: PoolClient, data: local.ProjectExport): Promise<number> {
+  const p = data.project
+  await client.query(`delete from projects where local_key = $1`, [p.local_key])
   const { rows } = await client.query(
-    `insert into sessions (name, status, started_at, ended_at, local_key)
-     values ($1, 'ended', $2, $3, $4) returning id`,
-    [s.name, s.started_at, s.ended_at ?? s.started_at, s.local_key]
+    `insert into projects (name, created_at, last_used_at, local_key)
+     values ($1, $2, $3, $4) returning id`,
+    [p.name, p.created_at, p.last_used_at ?? p.created_at, p.local_key]
   )
   const sid = Number(rows[0].id)
 
+  // When the project was worked in, per session (sessions themselves hold no data).
+  if (data.spans.length) {
+    await client.query(
+      `insert into project_spans (project_id, session_key, session_started_at, session_ended_at,
+         started_at, ended_at)
+       select ${sid}, session_key, session_started_at, session_ended_at, started_at, ended_at
+       from jsonb_to_recordset($1::jsonb) as x(session_key text, session_started_at timestamptz,
+         session_ended_at timestamptz, started_at timestamptz, ended_at timestamptz)`,
+      [JSON.stringify(data.spans)]
+    )
+  }
+
   const pages = await insertRows(
     client,
-    `insert into pages (session_id, captured_at, url, title, description, body, text_hash, truncated,
+    `insert into pages (project_id, captured_at, url, title, description, body, text_hash, truncated,
        note_path, index_status, local_id)
      select ${sid}, captured_at, url, title, description, body, text_hash, truncated,
        note_path, index_status, id
@@ -50,7 +63,7 @@ async function copy(client: PoolClient, data: local.SessionExport): Promise<numb
 
   const captures = await insertRows(
     client,
-    `insert into captures (session_id, captured_at, screenshot_path, note, app_name, window_title,
+    `insert into captures (project_id, captured_at, screenshot_path, note, app_name, window_title,
        url, image_hash, status, index_status, note_path, page_id, source, local_id)
      select ${sid}, captured_at, screenshot_path, note, app_name, window_title,
        url, image_hash, status, index_status, note_path, page_id, coalesce(source, 'auto'), id
@@ -63,7 +76,7 @@ async function copy(client: PoolClient, data: local.SessionExport): Promise<numb
 
   const sets = await insertRows(
     client,
-    `insert into suggestion_sets (session_id, capture_id, generation_id, created_at, status, topic,
+    `insert into suggestion_sets (project_id, capture_id, generation_id, created_at, status, topic,
        suggestions, local_id)
      select ${sid}, capture_id, generation_id, created_at, status, topic, suggestions, id
      from jsonb_to_recordset($1::jsonb) as x(id bigint, capture_id bigint, generation_id integer,
@@ -74,7 +87,7 @@ async function copy(client: PoolClient, data: local.SessionExport): Promise<numb
 
   const actions = await insertRows(
     client,
-    `insert into actions (session_id, capture_id, suggestion_set_id, created_at, kind, prompt, result,
+    `insert into actions (project_id, capture_id, suggestion_set_id, created_at, kind, prompt, result,
        status, blocks, sources, tokens_in, tokens_out, completed_at, local_id)
      select ${sid}, capture_id, suggestion_set_id, created_at, kind, prompt, result,
        status, blocks, sources, tokens_in, tokens_out, completed_at, id
@@ -91,7 +104,7 @@ async function copy(client: PoolClient, data: local.SessionExport): Promise<numb
 
   const files = await insertRows(
     client,
-    `insert into files (session_id, added_at, name, kind, size, original_path, stored_path, sha1,
+    `insert into files (project_id, added_at, name, kind, size, original_path, stored_path, sha1,
        body, extract_status, truncated, note_path, index_status, local_id)
      select ${sid}, added_at, name, kind, size, original_path, stored_path, sha1,
        body, extract_status, truncated, note_path, index_status, id
@@ -104,7 +117,7 @@ async function copy(client: PoolClient, data: local.SessionExport): Promise<numb
 
   await insertRows(
     client,
-    `insert into notes (session_id, capture_id, action_id, file_id, provenance, topic, body,
+    `insert into notes (project_id, capture_id, action_id, file_id, provenance, topic, body,
        created_at, local_id)
      select ${sid}, capture_id, action_id, file_id, provenance, topic, body, created_at, id
      from jsonb_to_recordset($1::jsonb) as x(id bigint, capture_id bigint, action_id bigint,
@@ -122,7 +135,7 @@ async function copy(client: PoolClient, data: local.SessionExport): Promise<numb
   const activity = data.activity.map((r) => ({ ...r, capture_id: remap(captures, r.capture_id) }))
   for (let i = 0; i < activity.length; i += 2000) {
     await client.query(
-      `insert into screen_activity (time, session_id, capture_id, app_name, window_title, url, topic,
+      `insert into screen_activity (time, project_id, capture_id, app_name, window_title, url, topic,
          changed, dwell_ms)
        select time, ${sid}, capture_id, app_name, window_title, url, topic, changed, dwell_ms
        from jsonb_to_recordset($1::jsonb) as x(time timestamptz, capture_id bigint, app_name text,
@@ -134,9 +147,8 @@ async function copy(client: PoolClient, data: local.SessionExport): Promise<numb
 }
 
 async function doUpload(localId: number): Promise<boolean> {
-  const data = local.exportSession(localId)
+  const data = local.exportProject(localId)
   if (!data) return false
-  if (data.session.status !== 'ended') return false
   local.setUploadStatus(localId, 'uploading')
   const t = Date.now()
   let client: PoolClient | null = null
@@ -145,22 +157,22 @@ async function doUpload(localId: number): Promise<boolean> {
     await client.query('begin')
     const remoteId = await copy(client, data)
     await client.query('commit')
-    if (!(await local.sessionExists(localId))) {
+    if (!(await local.projectExists(localId))) {
       // Deleted on the Mac while uploading: don't leave a copy behind in TigerData.
       await removeRemote(remoteId)
       return false
     }
     local.setUploadStatus(localId, 'synced', { remoteId })
     console.log(
-      `tigerdata: uploaded session ${localId} → ${remoteId} (${data.captures.length} captures, ` +
-        `${data.pages.length} pages, ${data.files.length} files, ` +
-        `${data.notes.length} notes, ${data.activity.length} activity rows, ${Date.now() - t} ms)`
+      `tigerdata: uploaded project ${localId} → ${remoteId} (${data.captures.length} captures, ` +
+        `${data.pages.length} pages, ${data.files.length} files, ${data.notes.length} notes, ` +
+        `${data.activity.length} activity rows, ${data.spans.length} spans, ${Date.now() - t} ms)`
     )
     if (capabilities.continuousAggregate) {
       // Uploaded activity is older than the aggregate's refresh window; materialize it now.
       void requirePool()
         .query(`call refresh_continuous_aggregate('activity_by_minute', $1::timestamptz, now())`, [
-          data.session.started_at
+          data.project.created_at
         ])
         .catch(() => undefined)
     }
@@ -168,16 +180,16 @@ async function doUpload(localId: number): Promise<boolean> {
   } catch (err) {
     await client?.query('rollback').catch(() => undefined)
     const msg = (err as Error).message.slice(0, 200)
-    console.warn(`tigerdata: upload of session ${localId} failed: ${msg}`)
-    if (await local.sessionExists(localId)) local.setUploadStatus(localId, 'failed', { error: msg })
+    console.warn(`tigerdata: upload of project ${localId} failed: ${msg}`)
+    if (await local.projectExists(localId)) local.setUploadStatus(localId, 'failed', { error: msg })
     return false
   } finally {
     client?.release()
   }
 }
 
-/** Upload one ended session. Concurrent calls for the same session share one run. */
-export function uploadSession(localId: number): Promise<boolean> {
+/** Upload one project. Concurrent calls for the same project share one run. */
+export function uploadProject(localId: number): Promise<boolean> {
   if (!getPool()) {
     local.setUploadStatus(localId, 'failed', { error: 'DATABASE_URL is not set' })
     return Promise.resolve(false)
@@ -192,25 +204,25 @@ export function uploadSession(localId: number): Promise<boolean> {
 
 async function removeRemote(remoteId: number): Promise<void> {
   try {
-    await deleteSessionRows(remoteId)
+    await deleteProjectRows(remoteId)
     local.clearRemoteDelete(remoteId)
   } catch {
     local.queueRemoteDelete(remoteId)
   }
 }
 
-/** Delete a session's TigerData copy now, or queue it if TigerData can't be reached. */
+/** Delete a project's TigerData copy now, or queue it if TigerData can't be reached. */
 export async function deleteRemote(remoteId: number): Promise<void> {
   if (!getPool()) return local.queueRemoteDelete(remoteId)
   await removeRemote(remoteId)
 }
 
-/** Retry everything outstanding: queued deletes, then ended sessions not yet uploaded. */
+/** Retry everything outstanding: queued deletes, then projects changed since their upload. */
 export function uploadPending(): Promise<void> {
   if (!getPool()) return Promise.resolve()
   sweep ??= (async () => {
     for (const id of local.pendingRemoteDeletes()) await removeRemote(id)
-    for (const id of await local.sessionsToUpload()) await uploadSession(id)
+    for (const id of await local.projectsToUpload(null)) await uploadProject(id)
   })()
     .catch((err) => console.warn('tigerdata: upload sweep failed:', (err as Error).message))
     .finally(() => {
