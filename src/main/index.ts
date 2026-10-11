@@ -3,6 +3,8 @@ import { app, BrowserWindow } from 'electron'
 import { electronApp, optimizer } from '@electron-toolkit/utils'
 import * as c from './controller'
 import { Bridge } from './bridge'
+import { condense } from './condense'
+import { claimFnHold } from './fnkey'
 import { config } from './config'
 import { runHealth, setBridgeInfo } from './health'
 import { registerIpc } from './ipc'
@@ -61,10 +63,16 @@ app.whenReady().then(async () => {
   }
 
   // Full pages from the Chrome extension (extension/), fed into the running session.
+  // fn held + a click on a paragraph in Chrome: the extension asks whether fn is held,
+  // then has the paragraph shortened with the active project in mind (condense.ts).
   const bridge = new Bridge(
     {
       onPage: (page) => c.onBrowserPage(page),
-      status: () => ({ session: !!getState().session, observing: getState().observing === 'on' })
+      status: () => ({ session: !!getState().session, observing: getState().observing === 'on' }),
+      fnHeld: () => claimFnHold(),
+      condense: async function* (input, signal) {
+        yield* condense(input, await c.activeProjectContext(), signal)
+      }
     },
     { port: config.bridgePort, extensionId: config.extensionId }
   )

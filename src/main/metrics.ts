@@ -6,7 +6,16 @@ import { metricsFile } from './paths'
 // default (Graphify + TigerData retrieval). Indexing cost: use GRAPHIFY_OPENROUTER_KEY
 // so OpenRouter reports Graphify's usage separately.
 export interface MetricLine {
-  kind: 'note' | 'suggest' | 'answer' | 'health' | 'change' | 'context' | 'explore'
+  kind:
+    | 'note'
+    | 'suggest'
+    | 'answer'
+    | 'health'
+    | 'change'
+    | 'context'
+    | 'explore'
+    | 'brief'
+    | 'condense'
   mode: 'retrieval' | 'baseline'
   inputTokens?: number
   outputTokens?: number

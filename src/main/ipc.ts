@@ -48,6 +48,12 @@ const handlers: Handlers = {
   retry: () => c.retry(),
   dismissNotice: async () => c.dismissNotice(),
   dismissIdeas: async () => c.dismissIdeas(),
+  includeScreen: async () => c.includeScreen(),
+  // Only the pill goes: the ideas stay as they are, and nothing is quietened (unlike
+  // dismissIdeas, which is the user saying "not now").
+  hideNudge: async () => {
+    if (getState().nudge) setState({ nudge: false })
+  },
   setPanelSize: async (w, h) => windows.resizePanel(Number(w), Number(h)),
   setFlowerInteractive: async (on) => windows.setFlowerInteractive(Boolean(on)),
   startSession: (ids) => c.startSession(Array.isArray(ids) ? ids.map(Number) : []),

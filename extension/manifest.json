@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Klair for Chrome",
-  "version": "0.1.0",
-  "description": "Sends the full text of the pages you open to the Klair app on this Mac while a Klair session is running.",
+  "version": "0.2.0",
+  "description": "Sends the full text of the pages you open to the Klair app on this Mac while a Klair session is running. Select text and tap fn to replace it with a short version.",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEArNdTV6sL+850k68ASGnI1uEKXSKPH2q8vAks4Ksc5tkz7kx+wTJ0EbbCp6NicZUgqhI7WBa7CVh4jkEvDGeCK4ff9VueVwuCFKIw9OxCV2J5ryazytjat+nCgR/aYpnf/bVDHYDFMhnX/4fwyhzRGYNKdcYJdWwA6Hd/rJ+0mPXo1PifaiheOc7gHCMWTWDshZIJNTQYa7O2ZWZyekkWefz+SeiK3h3ovg2Ca10SA34i6MHLMsGcS0PkN9z4cRZfmIhPWvvN+vasdL6CCuZi8hGV+TElgzYXIGUAGNxnLt0If0YM45UoCIeZbKBRDqF1z0Aqw6ywcHh8GM5p8mYXGwIDAQAB",
   "permissions": ["storage", "alarms"],
   "host_permissions": ["http://127.0.0.1:47821/*"],
@@ -10,7 +10,7 @@
   "content_scripts": [
     {
       "matches": ["http://*/*", "https://*/*"],
-      "js": ["content.js"],
+      "js": ["content.js", "condense.js"],
       "run_at": "document_idle",
       "all_frames": false
     }

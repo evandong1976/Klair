@@ -3,6 +3,10 @@
 // 127.0.0.1, see src/main/bridge.ts in the Klair repo), and checks in every minute so
 // Klair's Start window can show the extension as connected. Klair only keeps pages
 // while a session is observing; otherwise it answers 409 and the page is dropped.
+//
+// It also carries "hold fn, click a paragraph": the page can't see the fn key, so each
+// click on a paragraph asks Klair whether fn is held, and if it is, the short version
+// that replaces the paragraph is streamed back.
 
 const KLAIR = 'http://127.0.0.1:47821'
 
@@ -45,7 +49,65 @@ async function checkIn() {
   return out
 }
 
+async function fnHeld() {
+  if (!(await enabled())) return { held: false }
+  try {
+    const res = await fetch(`${KLAIR}/v1/fn`, { method: 'POST' })
+    return { held: res.ok && !!(await res.json()).held }
+  } catch {
+    return { held: false } // Klair isn't running
+  }
+}
+
+// The content script opens a port per replacement; the answer streams back over it.
+chrome.runtime.onConnect.addListener((port) => {
+  if (port.name !== 'klair:condense') return
+  const tab = port.sender?.tab
+  if (!tab || port.sender.frameId !== 0 || tab.incognito) return port.disconnect()
+  const abort = new AbortController()
+  let open = true
+  port.onDisconnect.addListener(() => {
+    open = false
+    abort.abort()
+  })
+  const post = (m) => {
+    if (open) port.postMessage(m)
+  }
+  port.onMessage.addListener(async (msg) => {
+    try {
+      const res = await fetch(`${KLAIR}/v1/condense`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text: msg.text,
+          title: msg.title,
+          url: msg.url,
+          again: !!msg.again
+        }),
+        signal: abort.signal
+      })
+      if (!res.ok || !res.body) return post({ error: `Klair answered ${res.status}` })
+      const reader = res.body.getReader()
+      const decoder = new TextDecoder()
+      for (;;) {
+        const { done, value } = await reader.read()
+        if (done) break
+        const delta = decoder.decode(value, { stream: true })
+        if (delta) post({ delta })
+      }
+      post({ done: true })
+    } catch {
+      post({ error: 'Klair stopped answering' })
+    }
+  })
+})
+
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  if (msg?.type === 'klair:fn-held') {
+    if (!sender.tab || sender.frameId !== 0 || sender.tab.incognito) return false
+    fnHeld().then(sendResponse)
+    return true // answer asynchronously
+  }
   if (msg?.type === 'klair:page') {
     // Top frame of a normal tab only; never incognito.
     if (sender.tab && sender.frameId === 0 && !sender.tab.incognito) void sendPage(msg.page)

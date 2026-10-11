@@ -12,6 +12,9 @@ import { z } from 'zod'
 //   GET  /v1/status   → { app: 'klair', session, observing }   (extension heartbeat)
 //   POST /v1/page     ← { url, title, text, description?, truncated? }
 //                     → 200 { stored } · 409 { reason } when no session is observing
+//   POST /v1/fn       → { held }   asked when a paragraph is clicked: is fn held down?
+//   POST /v1/condense ← { text, title?, url?, again? }
+//                     → 200 text/plain, streamed: the 1–3 sentences that replace the paragraph
 
 /** Pinned by the "key" in extension/manifest.json. */
 export const KLAIR_EXTENSION_ID = 'jndibkpbjoldneahpgmofeoekkpeaepo'
@@ -30,9 +33,25 @@ const pageSchema = z.object({
 
 export type BrowserPage = z.infer<typeof pageSchema>
 
+export const MAX_CONDENSE_CHARS = 20_000
+
+const condenseSchema = z.object({
+  text: z.string().trim().min(1).max(MAX_CONDENSE_CHARS),
+  title: z.string().max(1000).default(''),
+  url: z.string().max(4096).default(''),
+  /** The text is already Klair's short version, and the reader wants it shorter still. */
+  again: z.boolean().default(false)
+})
+
+export type CondenseInput = z.infer<typeof condenseSchema>
+
 export interface BridgeHandlers {
   onPage(page: BrowserPage): Promise<{ stored: boolean; reason?: string }>
   status(): { session: boolean; observing: boolean }
+  /** Is fn held right now? Asked when a paragraph is clicked. Optional: false without it. */
+  fnHeld?(): boolean
+  /** Streams the short replacement for a clicked paragraph. Optional: 404 without it. */
+  condense?(input: CondenseInput, signal: AbortSignal): AsyncIterable<string>
 }
 
 export interface BridgeInfo {
@@ -145,6 +164,43 @@ export class Bridge {
       } catch (err) {
         return this.send(res, 500, { error: (err as Error).message.slice(0, 200) })
       }
+    }
+    if (req.method === 'POST' && path === '/v1/fn') {
+      // POST, not GET: a web page can't make a POST here without showing its Origin.
+      req.resume()
+      const held = this.handlers.fnHeld?.() ?? false
+      if (held) console.log('chrome: fn + click on a paragraph')
+      return this.send(res, 200, { held })
+    }
+    if (req.method === 'POST' && path === '/v1/condense' && this.handlers.condense) {
+      let input: CondenseInput
+      try {
+        input = condenseSchema.parse(JSON.parse(await readBody(req)))
+      } catch {
+        return this.send(res, 400, { error: 'bad selection' })
+      }
+      const abort = new AbortController()
+      res.on('close', () => abort.abort())
+      try {
+        for await (const chunk of this.handlers.condense(input, abort.signal)) {
+          if (abort.signal.aborted) return
+          if (!res.headersSent) {
+            res.writeHead(200, {
+              'Content-Type': 'text/plain; charset=utf-8',
+              'Cache-Control': 'no-store',
+              'Access-Control-Allow-Origin': this.origin,
+              Vary: 'Origin'
+            })
+          }
+          res.write(chunk)
+        }
+        if (!res.headersSent) return this.send(res, 502, { error: 'empty answer' })
+        res.end()
+      } catch (err) {
+        if (res.headersSent) return void res.destroy() // cut off mid-stream: the page restores the text
+        this.send(res, 502, { error: (err as Error).message.slice(0, 200) })
+      }
+      return
     }
     this.send(res, 404, { error: 'not found' })
   }

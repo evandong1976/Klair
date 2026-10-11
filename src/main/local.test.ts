@@ -228,3 +228,19 @@ test('a session holds the projects pulled into it, numbered fn 1, fn 2, …', as
     ['swe-topic', 'os-topic']
   )
 })
+
+test('a project keeps a brief and the number of notes it was written from', async () => {
+  const p = await local.createProject('briefed')
+  assert.deepEqual(local.getBrief(p.id), { brief: '', notes: 0 })
+  assert.equal(local.observedNoteCount(p.id), 0)
+  await local.insertNote({ projectId: p.id, provenance: 'observed', topic: 'a', body: 'one' })
+  await local.insertNote({ projectId: p.id, provenance: 'observed', topic: 'b', body: 'two' })
+  // Answers Klair wrote are not screens the user worked on.
+  await local.insertNote({ projectId: p.id, provenance: 'assistant', topic: 'c', body: 'three' })
+  assert.equal(local.observedNoteCount(p.id), 2)
+  local.setBrief(p.id, 'Building an Electron app in a terminal.', 2)
+  assert.deepEqual(local.getBrief(p.id), {
+    brief: 'Building an Electron app in a terminal.',
+    notes: 2
+  })
+})

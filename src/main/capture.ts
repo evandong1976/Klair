@@ -108,6 +108,13 @@ export class CaptureLoop {
     void this.tick()
   }
 
+  /** Look again now and treat what is there as new (the user asked for this screen). */
+  refresh(): void {
+    if (!this.timer) return
+    this.detector = new ChangeDetector()
+    void this.tick()
+  }
+
   stop(): void {
     if (this.timer) clearInterval(this.timer)
     if (this.recheck) clearTimeout(this.recheck)

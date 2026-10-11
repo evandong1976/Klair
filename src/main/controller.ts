@@ -21,7 +21,8 @@ import { createHash, randomUUID } from 'crypto'
 import { cache } from './cache'
 import { captureArea, CaptureLoop, type Frame } from './capture'
 import { buildExplorable } from './explore'
-import { belongsInProject, changeJudgeEnabled, judgeScreen, thumbnail } from './judge'
+import { briefOf, refreshBrief } from './brief'
+import { changeJudgeEnabled, judgeScreen, thumbnail } from './judge'
 import { config } from './config'
 import { ControllerCore, type Effect } from './controller-core'
 import * as db from './db'
@@ -101,10 +102,49 @@ function notice(n: Notice | null): void {
   setState({ notice: n })
 }
 
-/** Nothing on screen to help with: grey flower, no nudge, no new ideas (see judge.ts). */
-function setIdle(idle: boolean): void {
-  if (getState().idle === idle) return
-  setState(idle ? { idle, nudge: false } : { idle })
+type IdleWhy = NonNullable<KlairState['idleWhy']>
+
+/** A screen Klair should go quiet on, seen while the panel was open: applied when it closes. */
+let idleOnClose: { why: IdleWhy; seen: string | null } | null = null
+/** The user said the screen Klair went quiet on is part of the project: take the next frame. */
+let includeNext = false
+/** ...and rewrite the brief as soon as that frame is noted, so the judge learns from it. */
+let briefAfterNext = false
+
+/**
+ * Klair offers ideas only on screens that are part of the project's work, as the screen
+ * judge reads it from the project's brief. Anywhere else it is idle: grey flower, no
+ * nudge, no new ideas. `why` null means the screen is the project's work again; `seen`
+ * is what was on the screen, in the note's words, so the panel can say what it saw.
+ *
+ * Going idle waits while the panel is open. The user is reading Klair then, and the
+ * options must not vanish because something behind the panel changed.
+ */
+function setIdle(why: IdleWhy | null, seen: string | null = null): void {
+  if (why && getState().panel !== 'closed') {
+    idleOnClose = { why, seen }
+    return
+  }
+  idleOnClose = null
+  const s = getState()
+  if (s.idleWhy === why && s.idleSeen === seen) return
+  setState(
+    why
+      ? { idle: true, idleWhy: why, idleSeen: seen, nudge: false }
+      : { idle: false, idleWhy: null, idleSeen: null }
+  )
+}
+
+/**
+ * "This is part of the project": the user overruling the judge. The screen is taken as
+ * work at once, and noting it is what teaches the brief, so the judge agrees next time.
+ */
+export function includeScreen(): void {
+  if (!projectId || !getState().idle) return
+  includeNext = true
+  idleOnClose = null
+  setState({ idle: false, idleWhy: null, idleSeen: null })
+  loop?.refresh()
 }
 
 /** A notice that clears itself, e.g. "Now in ML study" after switching sessions. */
@@ -220,6 +260,8 @@ async function enterProject(p: { id: number; name: string; slot: number | null }
     nudge: false,
     selection: null,
     idle: false,
+    idleWhy: null,
+    idleSeen: null,
     downloads: [],
     stats: await store.projectStats(p.id).catch(() => ({ captures: 0, answers: 0, tabs: 0 }))
   })
@@ -386,6 +428,8 @@ export async function endSession(): Promise<void> {
     suggestions: null,
     nudge: false,
     idle: false,
+    idleWhy: null,
+    idleSeen: null,
     answer: null,
     panel: 'closed',
     selection: null,
@@ -554,31 +598,43 @@ async function onFrame(frame: Frame): Promise<void> {
   if (!frame.changed) return
 
   // The pixel diff says the screen changed. Before re-noting it and replacing the ideas,
-  // ask whether there is anything on it to help with, and whether it is really different
-  // content. A bare desktop gets no note and no ideas; more of the same gets no new ones.
+  // the screen judge answers two questions: is it really different content, and is it
+  // part of this project's work (going by the project's brief)? More of the same gets no
+  // new ideas. A screen that isn't the project's work gets none at all: it isn't saved,
+  // and the flower goes grey.
   const thumb = changeJudgeEnabled ? thumbnail(frame.png) : null
   // The note is started alongside the judgement, not after it, so a real change doesn't
-  // wait for both in turn. If the judgement says to skip this frame, the note is dropped.
+  // wait for both in turn. If this frame is skipped, the note is dropped.
   const started = await startNote(sid, frame)
-  if (thumb) {
-    const verdict = await judgeScreen(notedThumb, thumb, sid)
-    // "Nothing useful here" greys the flower and stops ideas, so it takes two votes: the
-    // judge's, and the note model's once its note is in.
-    const useful =
-      verdict.useful ||
-      (await started.note.then(
-        (n) => n.hasContent !== false,
-        () => true
-      ))
-    if (sid !== projectId) return // the project switched or the session ended meanwhile
-    setIdle(!useful)
-    if (!useful || (notedThumb && !verdict.changed)) {
-      row.changed = false
-      row.dwellMs = now - lastChangeAt
-      return
-    }
+  const skip = (): void => {
+    row.changed = false
+    row.dwellMs = now - lastChangeAt
   }
+  // A screen the user has just vouched for is not put to the judge.
+  const vouched = includeNext
+  includeNext = false
+  const verdict =
+    thumb && !vouched
+      ? await judgeScreen(notedThumb, thumb, sid, {
+          name: getState().project?.name ?? 'Project',
+          brief: briefOf(sid)
+        })
+      : null
   if (sid !== projectId) return // the project switched or the session ended meanwhile
+  if (verdict && notedThumb && !verdict.changed) {
+    // The same content as the last screen that was noted, and only work gets noted.
+    setIdle(null)
+    return skip()
+  }
+  if (verdict && !verdict.relevant) {
+    // Say what was seen, in the note's own words, instead of a canned reason.
+    const note = await started.note.catch(() => null)
+    if (sid !== projectId) return
+    setIdle(note?.hasContent === false ? 'empty' : 'unrelated', note?.topic ?? null)
+    return skip()
+  }
+  setIdle(null)
+  if (vouched) briefAfterNext = true
   notedThumb = thumb
   lastChangeAt = now
 
@@ -630,22 +686,25 @@ async function projectContext(sid: number): Promise<string> {
   return `Project "${name}". Covered earlier, most recent first:\n${lines.join('\n')}`
 }
 
+/** What the active project has covered so far, or '' when no project is active. */
+export async function activeProjectContext(): Promise<string> {
+  return projectId ? projectContext(projectId).catch(() => '') : ''
+}
+
 /** A note being written for a frame that may or may not end up being kept. */
 interface StartedNote {
   page: (PageContext & { id: number; at: number }) | null
-  soFar: string
   note: Promise<VisionNote>
 }
 
 async function startNote(sid: number, frame: Frame, selection = false): Promise<StartedNote> {
   const page = livePage && Date.now() - livePage.at < LIVE_PAGE_MS ? livePage : null
-  const soFar = await projectContext(sid)
   const note = makeVisionNote(frame.png, frame.hash, frame.meta, sid, page, {
     selection,
-    projectContext: soFar
+    projectContext: await projectContext(sid)
   })
   note.catch(() => {}) // a dropped note must not surface as an unhandled rejection
-  return { page, soFar, note }
+  return { page, note }
 }
 
 async function noteFor(
@@ -655,11 +714,8 @@ async function noteFor(
   started?: StartedNote
 ): Promise<VisionNote | null> {
   try {
-    const {
-      page,
-      soFar,
-      note: pending
-    } = started ?? (await startNote(sid, frame, mem.source === 'selection'))
+    const { page, note: pending } =
+      started ?? (await startNote(sid, frame, mem.source === 'selection'))
     const note = await pending
     mem.note = note
     currentTopic = note.topic
@@ -669,7 +725,7 @@ async function noteFor(
     }
     // Saving it into the session's context happens in the background, so ideas for
     // this screen never wait on that decision.
-    void remember(sid, mem, frame, note, soFar).catch((err) =>
+    void remember(sid, mem, frame, note).catch((err) =>
       console.warn('note not saved:', (err as Error).message)
     )
     return note
@@ -688,21 +744,8 @@ async function remember(
   sid: number,
   mem: CaptureMem,
   frame: Frame,
-  note: VisionNote,
-  soFar: string
+  note: VisionNote
 ): Promise<void> {
-  // An area the user selected on purpose always belongs. Otherwise, with nothing covered
-  // yet there is nothing to compare against: keep it.
-  const belongs =
-    mem.source === 'selection' ||
-    !changeJudgeEnabled ||
-    !soFar ||
-    (await belongsInProject(soFar, note.topic, note.note, sid))
-  if (!belongs) {
-    console.log(`kept out of session context: ${note.topic}`)
-    await store.setCaptureNote(mem.id, note.note, null)
-    return
-  }
   const file = await writeNoteFile(
     notesDir(sid),
     `capture-${mem.id}`,
@@ -727,6 +770,9 @@ async function remember(
     body: note.note
   })
   scheduleIndex(sid)
+  // The brief is rewritten every few notes (at once if the user just vouched for a screen).
+  refreshBrief(sid, getState().project?.name ?? 'Project', briefAfterNext)
+  briefAfterNext = false
 }
 
 // ------------------------------------------------------------------ selected area
@@ -812,7 +858,7 @@ export async function finishSelection(rect: SelectionRect): Promise<void> {
     panel: 'ideas'
   })
   core.setPanelOpen(true)
-  setIdle(false) // the user picked something to work with
+  setIdle(null) // the user picked something to work with
   apply(core.pin(id))
   windows.showPanel()
 }
@@ -1097,6 +1143,7 @@ export function closePanel(): void {
   const held = core.setPanelOpen(false) // a screen change that waited for the panel to close
   setState({ panel: 'closed', nudge: false })
   apply(held)
+  if (idleOnClose) setIdle(idleOnClose.why, idleOnClose.seen) // a quiet screen that waited likewise
   windows.hidePanel()
 }
 
