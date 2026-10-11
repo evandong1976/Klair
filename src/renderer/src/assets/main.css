@@ -1,18 +1,52 @@
 @import 'tailwindcss';
-@import '@fontsource/nunito/400.css';
-@import '@fontsource/nunito/500.css';
-@import '@fontsource/nunito/600.css';
-@import '@fontsource/nunito/700.css';
-@import '@fontsource/nunito/800.css';
-@import '@fontsource/silkscreen/400.css';
-@import '@fontsource/geist-mono/400.css';
-@import '@fontsource/geist-mono/500.css';
+/* Reforma 1918 (PampaType for the Universidad Nacional de Córdoba, CC BY-ND 4.0; see
+   fonts/reforma/LICENSE.txt). The files are the foundry's own webfonts, unmodified.
+   It has three weights, so each covers a range: Blanca for regular text, Gris for
+   medium and semibold, Negra for bold and heavier. */
+@font-face {
+  font-family: 'Reforma 1918';
+  src: url('./fonts/reforma/Reforma1918-Blanca.woff2') format('woff2');
+  font-weight: 100 400;
+  font-style: normal;
+}
+@font-face {
+  font-family: 'Reforma 1918';
+  src: url('./fonts/reforma/Reforma1918-BlancaItalica.woff2') format('woff2');
+  font-weight: 100 400;
+  font-style: italic;
+}
+@font-face {
+  font-family: 'Reforma 1918';
+  src: url('./fonts/reforma/Reforma1918-Gris.woff2') format('woff2');
+  font-weight: 500 600;
+  font-style: normal;
+}
+@font-face {
+  font-family: 'Reforma 1918';
+  src: url('./fonts/reforma/Reforma1918-GrisItalica.woff2') format('woff2');
+  font-weight: 500 600;
+  font-style: italic;
+}
+@font-face {
+  font-family: 'Reforma 1918';
+  src: url('./fonts/reforma/Reforma1918-Negra.woff2') format('woff2');
+  font-weight: 700 900;
+  font-style: normal;
+}
+@font-face {
+  font-family: 'Reforma 1918';
+  src: url('./fonts/reforma/Reforma1918-NegraItalica.woff2') format('woff2');
+  font-weight: 700 900;
+  font-style: italic;
+}
 
 /* Design tokens from design/DESIGN.md §2 */
 @theme {
-  --font-sans: 'Nunito', -apple-system, 'Helvetica Neue', sans-serif;
-  --font-pixel: 'Silkscreen', ui-monospace, monospace;
-  --font-mono: 'Geist Mono', ui-monospace, monospace;
+  /* One typeface for everything. The token names are Tailwind's (font-sans, font-mono)
+     plus Klair's small-label style (font-pixel, styled below). */
+  --font-sans: 'Reforma 1918', 'Iowan Old Style', Georgia, -apple-system, serif;
+  --font-pixel: var(--font-sans);
+  --font-mono: var(--font-sans);
 
   --color-ink: #2d3128;
   --color-ink-2: #3f4538;
@@ -116,6 +150,8 @@ body,
   font-family: var(--font-sans);
   color: var(--color-ink);
   -webkit-font-smoothing: antialiased;
+  /* Reforma defaults to old-style figures; lining ones keep ⌘1, times and counts clear. */
+  font-variant-numeric: lining-nums;
 }
 
 /* Floating surfaces (the nudge pill): solid, with their own shadow. The window behind
@@ -126,6 +162,14 @@ body,
   box-shadow:
     0 10px 28px rgba(90, 60, 55, 0.16),
     0 1px 3px rgba(90, 60, 55, 0.08);
+}
+
+/* Small section labels ("WHERE YOU ARE"). These used a caps-only pixel font; in
+   Reforma they keep the same role as spaced small capitals. */
+.font-pixel {
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  font-weight: 600;
 }
 
 @utility pixelated {

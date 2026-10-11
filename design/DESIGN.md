@@ -63,10 +63,9 @@ Text contrast was chosen for ≥4.5:1 on white/glass; don't lighten the greys.
 
 ### Type
 
-- **Nunito** (Google Fonts, OFL) — all UI text. Headings 800, titles 19–30px, body 14–15px, secondary 12.5–13px, buttons 600–700.
-- **Silkscreen** (pixel font, OFL) — tiny section labels only, 11–12px ("Where you are", "Observing · 42:10", "Quiz · 1 of 3"). Never for body copy.
-- **Geist Mono** (OFL) — code, timestamps, numeric readouts.
-- Keycaps use Nunito 700 with `-apple-system` fallback so ⌘ ⇧ ⌥ ⌃ ↵ glyphs render.
+- **Reforma 1918** (PampaType, CC BY-ND 4.0, bundled in `src/renderer/src/assets/fonts/reforma/`) — the only typeface, used for all UI text, section labels and code (replaced Nunito, Silkscreen and Geist Mono on 2026-10-10). Three weights: Blanca for regular text, Gris for medium and semibold, Negra for bold and headings.
+- Section labels ("Where you are", "Observing · 42:10") are 11–12px Gris, uppercase with wide letter-spacing.
+- Keycaps use Reforma 1918 Negra with `-apple-system` fallback so ⌘ ⇧ ⌥ ⌃ ↵ glyphs render.
 - Electron runs offline: bundle the fonts (e.g. `@fontsource/*` packages) instead of loading Google Fonts.
 
 ### Shape and spacing
@@ -101,7 +100,7 @@ Glass is for the **background of containers** (panels, pills, popovers, windows,
 
 ```css
 .klair-key {
-  font: 700 11.5px Nunito, -apple-system, sans-serif; line-height: 1;
+  font: 700 11.5px 'Reforma 1918', -apple-system, serif; line-height: 1;
   padding: 5px 8px; border-radius: 6px;
   background: #FFFFFF; border: 1px solid #E2D3D0; box-shadow: 0 2px 0 #E2D3D0;
   color: #2D3128; white-space: nowrap;
