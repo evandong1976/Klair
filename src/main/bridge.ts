@@ -12,6 +12,10 @@ import { z } from 'zod'
 //   GET  /v1/status   → { app: 'klair', session, observing }   (extension heartbeat)
 //   POST /v1/page     ← { url, title, text, description?, truncated? }
 //                     → 200 { stored } · 409 { reason } when no session is observing
+//   POST /v1/fn       → { tap }   held open while a page has text selected; answers
+//                       { tap: true } the moment fn is tapped, { tap: false } after 20 s
+//   POST /v1/condense ← { text, title?, url? }
+//                     → 200 text/plain, streamed: the 1–3 sentences that replace the selection
 
 /** Pinned by the "key" in extension/manifest.json. */
 export const KLAIR_EXTENSION_ID = 'jndibkpbjoldneahpgmofeoekkpeaepo'
@@ -30,9 +34,22 @@ const pageSchema = z.object({
 
 export type BrowserPage = z.infer<typeof pageSchema>
 
+export const MAX_CONDENSE_CHARS = 20_000
+const FN_WAIT_MS = 20_000
+
+const condenseSchema = z.object({
+  text: z.string().trim().min(1).max(MAX_CONDENSE_CHARS),
+  title: z.string().max(1000).default(''),
+  url: z.string().max(4096).default('')
+})
+
+export type CondenseInput = z.infer<typeof condenseSchema>
+
 export interface BridgeHandlers {
   onPage(page: BrowserPage): Promise<{ stored: boolean; reason?: string }>
   status(): { session: boolean; observing: boolean }
+  /** Streams the short replacement for a selected passage. Optional: 404 without it. */
+  condense?(input: CondenseInput, signal: AbortSignal): AsyncIterable<string>
 }
 
 export interface BridgeInfo {
@@ -49,6 +66,8 @@ export interface BridgeInfo {
 export class Bridge {
   private server: Server | null = null
   private state: BridgeInfo
+  /** Pages with text selected, each waiting to hear about the next fn tap. */
+  private fnWaiters = new Set<(tap: boolean) => void>()
   private readonly origin: string
 
   constructor(
@@ -87,7 +106,19 @@ export class Bridge {
     })
   }
 
+  /**
+   * fn was tapped. If a page in Chrome is waiting with text selected, the tap is
+   * theirs (they replace the selection with a short version) and this returns true;
+   * otherwise false, and the tap does what it always did.
+   */
+  fnTap(): boolean {
+    if (this.fnWaiters.size === 0) return false
+    for (const answer of [...this.fnWaiters]) answer(true)
+    return true
+  }
+
   close(): void {
+    for (const answer of [...this.fnWaiters]) answer(false)
     this.server?.close()
     this.server = null
     this.state.listening = false
@@ -145,6 +176,53 @@ export class Bridge {
       } catch (err) {
         return this.send(res, 500, { error: (err as Error).message.slice(0, 200) })
       }
+    }
+    if (req.method === 'POST' && path === '/v1/fn') {
+      // POST, not GET: a web page can't make a POST here without showing its Origin.
+      const answer = (tap: boolean): void => {
+        if (!this.fnWaiters.delete(answer)) return
+        clearTimeout(timer)
+        if (!res.writableEnded) this.send(res, 200, { tap })
+      }
+      const timer = setTimeout(() => answer(false), FN_WAIT_MS)
+      this.fnWaiters.add(answer)
+      // The page lost its selection or focus, or the tab closed: stop waiting.
+      res.on('close', () => {
+        this.fnWaiters.delete(answer)
+        clearTimeout(timer)
+      })
+      req.resume()
+      return
+    }
+    if (req.method === 'POST' && path === '/v1/condense' && this.handlers.condense) {
+      let input: CondenseInput
+      try {
+        input = condenseSchema.parse(JSON.parse(await readBody(req)))
+      } catch {
+        return this.send(res, 400, { error: 'bad selection' })
+      }
+      const abort = new AbortController()
+      res.on('close', () => abort.abort())
+      try {
+        for await (const chunk of this.handlers.condense(input, abort.signal)) {
+          if (abort.signal.aborted) return
+          if (!res.headersSent) {
+            res.writeHead(200, {
+              'Content-Type': 'text/plain; charset=utf-8',
+              'Cache-Control': 'no-store',
+              'Access-Control-Allow-Origin': this.origin,
+              Vary: 'Origin'
+            })
+          }
+          res.write(chunk)
+        }
+        if (!res.headersSent) return this.send(res, 502, { error: 'empty answer' })
+        res.end()
+      } catch (err) {
+        if (res.headersSent) return void res.destroy() // cut off mid-stream: the page restores the text
+        this.send(res, 502, { error: (err as Error).message.slice(0, 200) })
+      }
+      return
     }
     this.send(res, 404, { error: 'not found' })
   }

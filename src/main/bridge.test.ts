@@ -13,7 +13,12 @@ const bridge = new Bridge(
       pages.push(p)
       return { stored: true }
     },
-    status: () => ({ session: observing, observing })
+    status: () => ({ session: observing, observing }),
+    condense: async function* (input) {
+      if (input.text === 'fail') throw new Error('model down')
+      yield 'Short '
+      yield `version of ${input.text.length} chars.`
+    }
   },
   { port: 0, extensionId: 'abcdefghijklmnopabcdefghijklmnop' }
 )
@@ -119,4 +124,74 @@ test('malformed pages are rejected', async () => {
       .status,
     400
   )
+})
+
+test('fn goes to a page that is waiting with text selected, and to Klair otherwise', async () => {
+  assert.equal(bridge.fnTap(), false) // nobody waiting: the tap opens Klair as usual
+  const waiting = call('POST', '/v1/fn', { origin: EXT })
+  await new Promise((r) => setTimeout(r, 50))
+  assert.equal(bridge.fnTap(), true)
+  const r = await waiting
+  assert.equal(r.status, 200)
+  assert.deepEqual(r.json, { tap: true })
+  assert.equal(bridge.fnTap(), false) // answered waiters don't linger
+})
+
+test('a page that stops waiting no longer takes the fn tap', async () => {
+  const req = request({
+    host: '127.0.0.1',
+    port,
+    method: 'POST',
+    path: '/v1/fn',
+    headers: { origin: EXT }
+  })
+  req.on('error', () => {}) // destroying it below reports a hang-up
+  req.end()
+  await new Promise((r) => setTimeout(r, 50))
+  req.destroy() // the selection was cleared: the extension aborts its request
+  await new Promise((r) => setTimeout(r, 100))
+  assert.equal(bridge.fnTap(), false)
+})
+
+test('a web page cannot wait for fn or ask for a short version', async () => {
+  assert.equal((await call('POST', '/v1/fn', { origin: 'https://evil.example' })).status, 403)
+  const r = await call('POST', '/v1/condense', {
+    origin: 'https://evil.example',
+    body: JSON.stringify({ text: 'x' })
+  })
+  assert.equal(r.status, 403)
+})
+
+function raw(body: string): Promise<{ status: number; text: string }> {
+  return new Promise((resolve, reject) => {
+    const req = request(
+      {
+        host: '127.0.0.1',
+        port,
+        method: 'POST',
+        path: '/v1/condense',
+        headers: { origin: EXT, 'content-type': 'application/json' }
+      },
+      (res) => {
+        let text = ''
+        res.on('data', (c) => (text += c))
+        res.on('end', () => resolve({ status: res.statusCode ?? 0, text }))
+      }
+    )
+    req.on('error', reject)
+    req.end(body)
+  })
+}
+
+test('a selection is streamed back as its short version', async () => {
+  const r = await raw(JSON.stringify({ text: 'x'.repeat(300), title: 'GD' }))
+  assert.equal(r.status, 200)
+  assert.equal(r.text, 'Short version of 300 chars.')
+})
+
+test('bad selections and model failures are reported, not streamed', async () => {
+  assert.equal((await raw('{')).status, 400)
+  assert.equal((await raw(JSON.stringify({ text: '   ' }))).status, 400)
+  assert.equal((await raw(JSON.stringify({ text: 'x'.repeat(20_001) }))).status, 400)
+  assert.equal((await raw(JSON.stringify({ text: 'fail' }))).status, 502)
 })

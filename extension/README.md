@@ -7,6 +7,7 @@ Sends the full text of the pages you open in Chrome to the Klair app on this Mac
 - `content.js` reads `document.body.innerText` (the whole rendered page, up to 200k characters) on load, again after late content arrives, on in-app URL changes, and when you switch back to the tab.
 - `background.js` posts it to `http://127.0.0.1:47821/v1/page` and checks in at `/v1/status` every minute.
 - `popup.html` shows whether Klair is observing (or refused the extension), what happened to the last page, and an on/off switch.
+- `condense.js` is "select text, tap fn": with at least 120 characters selected on the focused page, it waits on Klair (`POST /v1/fn`, through `background.js`) for the fn tap, then swaps the selection for a loading shimmer and streams in a one-to-three sentence version from `POST /v1/condense`. A small **original** switch after it shows the page's own text again. It works whenever Klair is running, session or not; only the selected text and the page title are sent. With nothing selected, fn opens Klair as usual.
 - PDFs opened in Chrome's built-in viewer can't be read by extensions; download them and add them in Klair instead.
 
 Nothing is sent from incognito windows. Klair drops pages unless a session is observing. See the main README's "Chrome extension" section.

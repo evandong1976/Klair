@@ -3,6 +3,7 @@ import { app, BrowserWindow } from 'electron'
 import { electronApp, optimizer } from '@electron-toolkit/utils'
 import * as c from './controller'
 import { Bridge } from './bridge'
+import { condense } from './condense'
 import { config } from './config'
 import { runHealth, setBridgeInfo } from './health'
 import { registerIpc } from './ipc'
@@ -48,8 +49,13 @@ app.whenReady().then(async () => {
   })
   onStateChange((s) => setTrayPaused(s.flower === 'paused' || s.flower === 'off'))
 
+  // With text selected in Chrome, fn replaces it with a short version (condense.ts)
+  // instead of opening the panel.
+  let bridge: Bridge | null = null
   const keys = registerShortcuts({
-    toggle: () => c.togglePanel(),
+    toggle: () => {
+      if (!bridge?.fnTap()) c.togglePanel()
+    },
     pause: () => void c.togglePause(),
     quiet: () => c.toggleQuiet(),
     session: (slot) => void c.switchToSlot(slot)
@@ -61,15 +67,17 @@ app.whenReady().then(async () => {
   }
 
   // Full pages from the Chrome extension (extension/), fed into the running session.
-  const bridge = new Bridge(
+  bridge = new Bridge(
     {
       onPage: (page) => c.onBrowserPage(page),
-      status: () => ({ session: !!getState().session, observing: getState().observing === 'on' })
+      status: () => ({ session: !!getState().session, observing: getState().observing === 'on' }),
+      condense
     },
     { port: config.bridgePort, extensionId: config.extensionId }
   )
-  setBridgeInfo(() => bridge.info())
-  if (!(await bridge.listen())) console.warn('chrome bridge:', bridge.info().error)
+  const b = bridge
+  setBridgeInfo(() => b.info())
+  if (!(await b.listen())) console.warn('chrome bridge:', b.info().error)
 
   windows.openStart()
 
