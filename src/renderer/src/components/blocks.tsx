@@ -1,3 +1,5 @@
+import katex from 'katex'
+import 'katex/dist/katex.min.css'
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import type { AnswerBlock, QuizBlock, SliderPlotBlock } from '../../../shared/blocks'
 import { mdBlocks, type Inline } from '../../../shared/markdown'
@@ -7,16 +9,27 @@ import { Explorable } from './Explorable'
 
 // Renderers for the whitelisted answer blocks (src/shared/blocks.ts). Model output is
 // rendered as React text only: no HTML injection, no code execution. The one exception
-// is maths: KaTeX parses the LaTeX itself and returns MathML markup, with `trust` off
+// is maths: KaTeX parses the LaTeX itself and returns its own markup, with `trust` off
 // (no links, images or raw HTML can come through it).
 
 /**
- * LaTeX drawn as MathML, which Chromium lays out itself with the system's maths font, so
- * there is no stylesheet or font to ship. A formula KaTeX can't parse shows its source.
+ * An equation, drawn by KaTeX with its own fonts (bundled, so it works offline). The
+ * browser's built-in maths layout was tried first: it drops bold vectors and blackboard
+ * letters. A formula KaTeX can't parse is shown as its source, in red.
  */
 function Tex({ tex, display }: { tex: string; display: boolean }): React.JSX.Element {
-  // Until KaTeX is installed the source is shown as written.
-  return <span className={display ? 'block my-1.5 text-center font-mono' : 'font-mono'}>{tex}</span>
+  const html = useMemo(
+    () =>
+      katex.renderToString(tex, { displayMode: display, throwOnError: false, strict: 'ignore' }),
+    [tex, display]
+  )
+  return (
+    <span
+      // A long display equation scrolls sideways inside the panel instead of widening it.
+      className={display ? 'block overflow-x-auto overflow-y-hidden' : undefined}
+      dangerouslySetInnerHTML={{ __html: html }}
+    />
+  )
 }
 
 function inline(tokens: Inline[]): ReactNode[] {
@@ -63,7 +76,7 @@ export function Markdown({ text }: { text: string }): React.JSX.Element {
         ) : b.type === 'code' ? (
           <CodeBlock key={i} language={b.language} source={b.source} />
         ) : (
-          <p key={i} className="m-0 text-pretty">
+          <p key={i} className="m-0 text-pretty whitespace-pre-line">
             {inline(b.inline)}
           </p>
         )

@@ -11,9 +11,9 @@ test('maths in LaTeX is picked out of a sentence, inline and on display', () => 
     { type: 'text', text: ' on.' }
   ])
   assert.deepEqual(mdInline('error \\[ E_{in}(g)=\\frac{2}{3} \\] and $$a^2$$'), [
-    { type: 'text', text: 'error ' },
+    { type: 'text', text: 'error' },
     { type: 'math', tex: 'E_{in}(g)=\\frac{2}{3}', display: true },
-    { type: 'text', text: ' and ' },
+    { type: 'text', text: 'and' },
     { type: 'math', tex: 'a^2', display: true }
   ])
 })
@@ -82,6 +82,19 @@ test('fenced code is kept verbatim, closed or still streaming', () => {
     language: 'text',
     source: 'half wri'
   })
+})
+
+test('lines of a paragraph stay separate lines, with no gap around a display equation', () => {
+  const [p] = mdBlocks('Three points:\n\\(x=1\\)\n\\(x=2\\)\nso:\n\\[\nx^2\n\\]\ndone')
+  assert.deepEqual(p.type === 'p' && p.inline, [
+    { type: 'text', text: 'Three points:\n' },
+    { type: 'math', tex: 'x=1', display: false },
+    { type: 'text', text: '\n' },
+    { type: 'math', tex: 'x=2', display: false },
+    { type: 'text', text: '\nso:' },
+    { type: 'math', tex: 'x^2', display: true },
+    { type: 'text', text: 'done' }
+  ])
 })
 
 test('an indented bullet is a sub-point of the one above it', () => {

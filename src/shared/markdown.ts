@@ -38,7 +38,15 @@ export function mdInline(text: string): Inline[] {
     last = m.index + tok.length
   }
   if (last < text.length) out.push({ type: 'text', text: text.slice(last) })
-  return out
+  // A display equation sits on a line of its own: the spaces and line breaks written
+  // around it would only add an empty line above or below.
+  out.forEach((tok, i) => {
+    if (tok.type !== 'math' || !tok.display) return
+    const [before, after] = [out[i - 1], out[i + 1]]
+    if (before?.type === 'text') before.text = before.text.trimEnd()
+    if (after?.type === 'text') after.text = after.text.trimStart()
+  })
+  return out.filter((tok) => tok.type !== 'text' || tok.text)
 }
 
 // While being read, a block holds its lines as raw text; they are tokenised at the end.
@@ -83,7 +91,9 @@ function prose(text: string): MdBlock[] {
         // An indented line under a list item is the rest of that item.
         cur.items[cur.items.length - 1] += ` ${line.trim()}`
       } else if (cur?.type === 'p') {
-        cur.text += ` ${line.trim()}`
+        // The line break is kept (the renderer shows it): answers put one item per line
+        // ("Training data has 3 points:" and then each point) without making it a list.
+        cur.text += `\n${line.trim()}`
       } else {
         open({ type: 'p', text: line.trim() })
       }
