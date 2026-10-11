@@ -3,6 +3,7 @@
 //   'tap'          fn pressed and released with no other key in between
 //   'chord', 'p'   fn held + P   (pause / resume)
 //   'chord', 'q'   fn held + Q   (quiet for 30 min)
+//   'chord', '1'–'9'   fn held + digit   (switch to that session)
 // Requires the Input Monitoring permission. Listen-only: it never blocks or changes keys.
 //
 // UNVERIFIED: written in a Linux workspace and not yet compiled. Build on the Mac with
@@ -80,6 +81,16 @@ static CGEventRef on_event(CGEventTapProxy proxy, CGEventType type, CGEventRef e
     other_key = true;
     if (keycode == KEY_P) emit(1, 'p');
     else if (keycode == KEY_Q) emit(1, 'q');
+    else {
+      // fn + 1–9: switch session. ANSI key codes for the digit row (not in numeric order).
+      static const int64_t DIGITS[9] = {18, 19, 20, 21, 23, 22, 26, 28, 25};
+      for (int i = 0; i < 9; i++) {
+        if (keycode == DIGITS[i]) {
+          emit(1, (char)('1' + i));
+          break;
+        }
+      }
+    }
   }
   return event;
 }

@@ -7,7 +7,7 @@ import { app } from 'electron'
 //
 // Addon contract: start(cb: (event: 'tap' | 'chord', key?: string) => void): boolean; stop(): void
 //   'tap'   → fn pressed and released with no other key
-//   'chord' → fn held while `key` ('p' | 'q') was pressed
+//   'chord' → fn held while `key` ('p' | 'q' | '1'–'9') was pressed
 // start() also asks macOS for Input Monitoring when it isn't granted yet. That request
 // is what makes Klair appear in System Settings › Input Monitoring at all.
 

@@ -7,7 +7,7 @@ import { getState, setState } from './state'
 
 // Global keys (DESIGN.md §4). Only the fn family is global; ⌘ keys are handled by
 // the panel itself while it has focus. Until the native fn addon runs, ⌃⌥K / ⌃⌥P /
-// ⌃⌥Q do the same jobs.
+// ⌃⌥Q do the same jobs. fn 1–9 (and always ⌃⌥1–9) jump to the session in that slot.
 
 export interface ShortcutResult {
   fn: boolean
@@ -39,6 +39,7 @@ export function registerShortcuts(h: {
   toggle: () => void
   pause: () => void
   quiet: () => void
+  session: (slot: number) => void
 }): ShortcutResult {
   onToggle = h.toggle
   const fn = startFnKey({
@@ -46,8 +47,10 @@ export function registerShortcuts(h: {
     onChord: (key) => {
       if (key === 'p') h.pause()
       if (key === 'q') h.quiet()
+      if (/^[1-9]$/.test(key)) h.session(Number(key))
     }
   })
+  for (let n = 1; n <= 9; n++) reg(`Control+Alt+${n}`, () => h.session(n))
   return {
     fn: fn.running,
     fallback: {

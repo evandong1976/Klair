@@ -122,6 +122,8 @@ Glass is for the **background of containers** (panels, pills, popovers, windows,
 
 ## 3. The flower
 
+> **Open state (2026-10-10):** the panel no longer unfolds *beneath* the flower. It opens over the flower's corner and the flower becomes its backdrop. The corner flower steps aside as the panel appears, and the panel draws the flower from exactly the same size and position (44px, 2px in from the top-right), then in one 0.9s movement resolves it from 11×11 to 30×30, grows it to 210px and lets it settle at 22% opacity behind the content (`BackdropFlower` in `Panel.tsx`). The flower takes no space of its own above the panel.
+
 The flower is the product's identity and its status light.
 
 - **Always visible** while a session runs: top-right of the display, ~10–12px from the top and right edges of the work area (below the macOS menu bar). Fully **transparent background** — no chip behind it — with `filter: drop-shadow(0 1px 1px rgba(90,60,55,0.28))` so pale petals survive on white pages.
@@ -144,7 +146,7 @@ The flower is the product's identity and its status light.
 
 ## 4. Keyboard map
 
-Keyboard-first: every action shows its shortcut on the control itself, and the open panel has a hint strip (`⌘1–3 pick · ⌘↑↓ move · ⌘/ all keys · esc close`).
+Keyboard-first: every action shows its shortcut on the control itself, and the open panel has a hint strip (`⌘1–9 pick · ⌘↑↓ move · ⌘/ all keys · esc close`).
 
 **Rule:** only the **fn** family is global. All **⌘** shortcuts work **only while Klair's panel is open** (so ⌘1 never steals the browser's tab switching the rest of the time).
 
@@ -153,8 +155,10 @@ Keyboard-first: every action shows its shortcut on the control itself, and the o
 | Anywhere | `fn` | Open / close Klair (flower blooms / shrinks) |
 | Anywhere | `fn P` | Pause / resume observing |
 | Anywhere | `fn Q` | Quiet ideas for 30 min |
+| Anywhere | `fn 1`–`fn 9` (or `⌃⌥1`–`⌃⌥9`) | Switch to the session in that slot; the running one is ended and saved first |
+| Start window | `1`–`9` · `⌘N` | Continue that session · new session |
 | Anywhere (fallback) | `⌃⌥K` | Replaces fn if macOS is using fn for input switching/dictation |
-| Klair open | `⌘1` `⌘2` `⌘3` | Pick an idea |
+| Klair open | `⌘1`–`⌘9` | Pick an idea (three about the screen, up to three more that build on the session) |
 | Klair open | `⌘↑` `⌘↓` | Move between ideas |
 | Klair open | `⌘K` | Focus "Ask for something else" |
 | Klair open | `⌘S` | Select an area: drag out a rectangle (esc cancels); it's captured and pinned as the context until "Use whole screen" |

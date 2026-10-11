@@ -46,6 +46,7 @@ const handlers: Handlers = {
   setPanelSize: async (w, h) => windows.resizePanel(Number(w), Number(h)),
   setFlowerInteractive: async (on) => windows.setFlowerInteractive(Boolean(on)),
   startSession: (name) => c.startSession(String(name)),
+  continueSession: (id) => c.continueSession(Number(id)),
   pause: () => c.pause(),
   resume: () => c.resume(),
   endSession: () => c.endSession(),

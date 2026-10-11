@@ -168,7 +168,9 @@ const ADDED_COLUMNS: [table: string, column: string, type: string][] = [
   // The Chrome page a screenshot shows, when the note model matched them.
   ['captures', 'page_id', 'integer references pages(id) on delete set null'],
   // 'auto' (the capture loop) or 'selection' (an area the user selected with ⌘S).
-  ['captures', 'source', "text not null default 'auto'"]
+  ['captures', 'source', "text not null default 'auto'"],
+  // 1–9: the session's place on the fn 1–9 / ⌃⌥1–9 switcher. Null when all nine are taken.
+  ['sessions', 'slot', 'integer']
 ]
 
 function addColumns(d: DatabaseSync): void {
@@ -176,6 +178,30 @@ function addColumns(d: DatabaseSync): void {
     const cols = d.prepare(`pragma table_info(${table})`).all() as { name: string }[]
     if (!cols.some((c) => c.name === column))
       d.exec(`alter table ${table} add column ${column} ${type}`)
+  }
+}
+
+export const SLOTS = 9
+
+function freeSlot(d: DatabaseSync): number | null {
+  const used = new Set(
+    (d.prepare(`select slot from sessions where slot is not null`).all() as { slot: number }[]).map(
+      (r) => Number(r.slot)
+    )
+  )
+  for (let n = 1; n <= SLOTS; n++) if (!used.has(n)) return n
+  return null
+}
+
+/** Sessions from before slots existed get the free ones, most recent first. */
+function backfillSlots(d: DatabaseSync): void {
+  const rows = d
+    .prepare(`select id from sessions where slot is null order by started_at desc`)
+    .all() as { id: number }[]
+  for (const r of rows) {
+    const slot = freeSlot(d)
+    if (slot === null) return
+    d.prepare(`update sessions set slot = ? where id = ?`).run(slot, r.id)
   }
 }
 
@@ -197,6 +223,7 @@ function open(): DatabaseSync {
     d.exec('pragma journal_mode = wal; pragma foreign_keys = on; pragma busy_timeout = 3000;')
     d.exec(schema)
     addColumns(d)
+    backfillSlots(d)
     sqlite = d
     openError = null
     return d
@@ -247,6 +274,7 @@ function sessionItem(r: Row): SessionListItem {
     startedAt: String(r.started_at),
     endedAt: (r.ended_at as string) ?? null,
     status: r.status as SessionListItem['status'],
+    slot: r.slot == null ? null : Number(r.slot),
     upload: {
       status: r.upload_status as UploadStatus,
       error: (r.upload_error as string) ?? null,
@@ -257,9 +285,10 @@ function sessionItem(r: Row): SessionListItem {
 
 export async function createSession(name: string): Promise<{ id: number; startedAt: string }> {
   const id = run(
-    `insert into sessions (local_key, name, status) values (?, ?, 'active')`,
+    `insert into sessions (local_key, name, status, slot) values (?, ?, 'active', ?)`,
     randomUUID(),
-    name
+    name,
+    freeSlot(open())
   )
   return {
     id,
@@ -288,6 +317,35 @@ export async function getSession(id: number): Promise<SessionListItem | null> {
   return r ? sessionItem(r) : null
 }
 
+export async function sessionBySlot(slot: number): Promise<SessionListItem | null> {
+  const r = one(`select * from sessions where slot = ?`, slot)
+  return r ? sessionItem(r) : null
+}
+
+/**
+ * Continue a session that was ended: it becomes the live one again, and is marked
+ * as changed so it is uploaded afresh the next time it ends.
+ */
+export async function reopenSession(id: number): Promise<void> {
+  run(
+    `update sessions set status = 'active', ended_at = null, upload_status = 'local',
+       upload_error = null where id = ?`,
+    id
+  )
+}
+
+/** The latest notes in a session, newest first: what the user has been working on in it. */
+export async function recentNotes(
+  sessionId: number,
+  limit: number
+): Promise<{ topic: string | null; body: string }[]> {
+  return all(
+    `select topic, body from notes where session_id = ? order by id desc limit ?`,
+    sessionId,
+    limit
+  ).map((r) => ({ topic: (r.topic as string) ?? null, body: String(r.body) }))
+}
+
 export async function sessionExists(id: number): Promise<boolean> {
   return !!one(`select 1 from sessions where id = ?`, id)
 }
@@ -302,8 +360,9 @@ export async function deleteSessionRows(id: number): Promise<void> {
 
 export async function expiredSessionIds(days: number): Promise<number[]> {
   return all(
+    // Measured from when the session was last used, so one that is continued stays.
     `select id from sessions where status = 'ended'
-       and started_at < strftime('%Y-%m-%dT%H:%M:%fZ', 'now', ?)`,
+       and coalesce(ended_at, started_at) < strftime('%Y-%m-%dT%H:%M:%fZ', 'now', ?)`,
     `-${Math.round(days)} days`
   ).map((r) => Number(r.id))
 }
@@ -509,7 +568,12 @@ export async function setCaptureStatus(id: number, status: 'committed' | 'failed
   run(`update captures set status = ? where id = ?`, status, id)
 }
 
-export async function setCaptureNote(id: number, note: string, notePath: string): Promise<void> {
+/** `notePath` is null for a capture kept out of the session's context (never indexed). */
+export async function setCaptureNote(
+  id: number,
+  note: string,
+  notePath: string | null
+): Promise<void> {
   run(`update captures set note = ?, note_path = ? where id = ?`, note, notePath, id)
 }
 
@@ -606,8 +670,8 @@ function ftsQuery(text: string): string {
 }
 
 /**
- * BM25 keyword search over local notes: the given session plus any session not yet
- * in TigerData (uploaded sessions are searched there instead, so nothing is counted twice).
+ * BM25 keyword search over one session's notes. Sessions are kept apart: nothing from
+ * another session is ever offered as context.
  */
 export async function searchNotes(
   query: string,
@@ -617,9 +681,9 @@ export async function searchNotes(
   if (!match) return []
   return all(
     `select n.id, n.session_id, n.capture_id, n.provenance, n.topic, n.body, n.created_at
-     from notes_fts f join notes n on n.id = f.rowid join sessions s on s.id = n.session_id
+     from notes_fts f join notes n on n.id = f.rowid
      where notes_fts match ?
-       and (n.session_id = ? or s.upload_status <> 'synced')
+       and n.session_id = ?
        and (? is null or n.capture_id is not ?)
      order by bm25(notes_fts) limit ?`,
     match,

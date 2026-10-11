@@ -2,7 +2,7 @@ import { randomUUID } from 'crypto'
 import type { SuggestionSet } from '../shared/types'
 import type { VisionNote } from './notes'
 
-// Suggestion Engine: packages the three ideas the vision note proposed for a screen.
+// Suggestion Engine: packages the ideas the vision note proposed for a screen (⌘1–9).
 // No model call here, so ideas are ready as soon as the note is. It only *proposes*;
 // nothing here executes assistance.
 
@@ -45,7 +45,7 @@ export function suggestionsFromNote(input: {
           ]
         : [])
     ],
-    ideas: input.note.ideas.slice(0, 3).map((idea, i) => {
+    ideas: input.note.ideas.slice(0, 9).map((idea, i) => {
       const title = idea.title.slice(0, 60)
       const subtitle = idea.subtitle.slice(0, 90)
       return {

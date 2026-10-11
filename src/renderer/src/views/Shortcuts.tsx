@@ -9,13 +9,14 @@ const GROUPS: { title: string; rows: [string, string][] }[] = [
     rows: [
       ['Open or close Klair', 'fn  ·  ⌃⌥K'],
       ['Pause or resume observing', 'fn P  ·  ⌃⌥P'],
-      ['Quiet ideas for 30 min', 'fn Q  ·  ⌃⌥Q']
+      ['Quiet ideas for 30 min', 'fn Q  ·  ⌃⌥Q'],
+      ['Switch session', 'fn 1–9  ·  ⌃⌥1–9']
     ]
   },
   {
     title: 'When Klair is open',
     rows: [
-      ['Pick an idea', '⌘1 ⌘2 ⌘3'],
+      ['Pick an idea', '⌘1–9'],
       ['Ask anything', '⌘K'],
       ['Select an area of the screen', '⌘S'],
       ['Move between ideas', '⌘↑ ⌘↓'],

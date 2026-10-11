@@ -113,18 +113,35 @@ function shown(core: ControllerCore, clock: { t: number }, id: string, captureId
   core.onSuggestions(gen, makeSet(id, captureId, gen))
 }
 
-test('screen change while the panel is open replaces the ideas at once', () => {
+test('screen change while the panel is open leaves the ideas alone until it closes', () => {
   const { core, clock } = setup()
   shown(core, clock, 'a', 1)
   core.setPanelOpen(true)
-  const fx = core.onCapture(2, true)
+  assert.deepEqual(core.onCapture(2, true), [])
+  assert.deepEqual(core.onCapture(3, true), [])
+  assert.equal(core.current?.id, 'a')
+  assert.equal(core.select(1)[0].type, 'execute') // the shortcuts still work
+  core.executionFinished()
+  // Closing applies the latest held change: the old ideas go, new ones wait for a dwell.
+  const fx = core.setPanelOpen(false)
+  assert.deepEqual(
+    fx.map((e) => e.type),
+    ['invalidateSuggestions']
+  )
+  assert.equal(core.currentCaptureId, 3)
+})
+
+test('asking for ideas with the panel open uses the screen as it is now', () => {
+  const { core, clock } = setup()
+  shown(core, clock, 'a', 1)
+  core.setPanelOpen(true)
+  core.onCapture(2, true)
+  const fx = core.requestNow()
   assert.deepEqual(
     fx.map((e) => e.type),
     ['invalidateSuggestions', 'requestSuggestions']
   )
   assert.equal(fx[1].type === 'requestSuggestions' && fx[1].captureId, 2)
-  assert.equal(core.current, null)
-  assert.equal(core.select(1)[0].type, 'rejectSelection') // old shortcuts are dead
 })
 
 test('a running idea keeps its set; ideas refresh for the new screen afterwards', () => {
@@ -171,4 +188,18 @@ test('a pinned selection stays the context until it is cleared', () => {
   assert.equal(last?.type === 'requestSuggestions' ? last.captureId : null, 12)
   assert.equal(core.pinnedCaptureId, null)
   assert.deepEqual(core.unpin(), [])
+})
+
+test('a pinned selection wins over a screen change held while the panel is open', () => {
+  const { core, clock } = setup()
+  shown(core, clock, 'a', 1)
+  core.setPanelOpen(true)
+  assert.deepEqual(core.onCapture(2, true), []) // held: the panel is open
+  const fx = core.pin(9) // the user selects an area: an explicit choice, applied at once
+  assert.equal(core.currentCaptureId, 9)
+  assert.ok(fx.some((e) => e.type === 'requestSuggestions' && e.captureId === 9))
+  assert.deepEqual(core.setPanelOpen(false), []) // nothing left over from the held change
+  assert.equal(core.currentCaptureId, 9)
+  core.unpin()
+  assert.equal(core.currentCaptureId, 2) // back to the latest screen
 })

@@ -38,6 +38,8 @@ export class ControllerCore {
   inflightGeneration: number | null = null
   current: SuggestionSet | null = null
   executingSetId: string | null = null
+  /** A screen change that arrived while the panel was open, applied when it closes. */
+  private heldCaptureId: number | null = null
   private lastRequestAt = Number.NEGATIVE_INFINITY
   private offeredForCapture: number | null = null
 
@@ -63,8 +65,13 @@ export class ControllerCore {
     return []
   }
 
-  setPanelOpen(open: boolean): void {
+  /** Closing the panel applies any screen change that was held back while it was open. */
+  setPanelOpen(open: boolean): Effect[] {
     this.panelOpen = open
+    if (open || this.heldCaptureId === null) return []
+    const held = this.heldCaptureId
+    this.heldCaptureId = null
+    return this.onCapture(held, true)
   }
 
   setQuiet(on: boolean, ms: number): void {
@@ -79,12 +86,21 @@ export class ControllerCore {
     // A selected area pinned as the context stays put; automatic captures are still
     // stored, and the latest one takes over when the selection is cleared.
     if (this.pinnedCaptureId !== null) return []
+    // With the panel open the user is reading Klair. The screen changing behind it must
+    // not pull the ideas out from under them or keep reloading them: the change is held
+    // until the panel closes, or until they ask for fresh ideas (requestNow).
+    if (this.panelOpen && this.currentCaptureId !== null) {
+      this.heldCaptureId = captureId
+      return []
+    }
+    this.heldCaptureId = null
     return this.switchTo(captureId)
   }
 
   /** A selected area becomes the context until it's cleared or replaced. */
   pin(captureId: number): Effect[] {
     this.pinnedCaptureId = captureId
+    this.heldCaptureId = null // the user chose this explicitly; it wins over a held change
     return this.switchTo(captureId)
   }
 
@@ -92,6 +108,7 @@ export class ControllerCore {
   unpin(): Effect[] {
     if (this.pinnedCaptureId === null) return []
     this.pinnedCaptureId = null
+    this.heldCaptureId = null
     const latest = this.latestAutoCaptureId
     return latest === null || latest === this.currentCaptureId ? [] : this.switchTo(latest)
   }
@@ -108,7 +125,7 @@ export class ControllerCore {
       effects.push({ type: 'invalidateSuggestions', set: this.current, reason: 'changed' })
       this.current = null
     }
-    // With the panel open the user is looking at Klair: offer ideas for the new screen now.
+    // The panel opened before the first capture landed: offer ideas for it now.
     if (this.panelOpen && !this.current) effects.push(this.request('user'))
     return effects
   }
@@ -131,6 +148,13 @@ export class ControllerCore {
    * quiet. Ideas kept for an older screen while one of them ran are replaced.
    */
   requestNow(): Effect[] {
+    // An explicit request is for the screen as it is now, including a held change.
+    if (this.heldCaptureId !== null && this.executingSetId === null) {
+      this.currentCaptureId = this.heldCaptureId
+      this.heldCaptureId = null
+      this.dwellStart = this.now()
+      this.inflightGeneration = null
+    }
     if (this.currentCaptureId === null || this.inflightGeneration !== null) return []
     const effects: Effect[] = []
     if (this.current) {

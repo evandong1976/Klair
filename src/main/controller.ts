@@ -18,6 +18,7 @@ import type {
 import { createHash } from 'crypto'
 import { cache } from './cache'
 import { captureArea, CaptureLoop, type Frame } from './capture'
+import { belongsInSession, changeJudgeEnabled, meaningfulChange, thumbnail } from './judge'
 import { config } from './config'
 import { ControllerCore, type Effect } from './controller-core'
 import * as db from './db'
@@ -61,6 +62,8 @@ let statsTimer: NodeJS.Timeout | null = null
 let lastChangeAt = Date.now()
 let currentTopic: string | null = null
 let lastMeta: Frame['meta'] = { appName: null, windowTitle: null, url: null }
+/** Small copy of the last screenshot that was noted: what a new one is compared with. */
+let notedThumb: Buffer | null = null
 let activity: store.ActivityRow[] = []
 const captures = new Map<number, CaptureMem>()
 const notePromises = new Map<number, Promise<VisionNote | null>>()
@@ -82,6 +85,14 @@ let livePage: (PageContext & { id: number; at: number }) | null = null
 
 function notice(n: Notice | null): void {
   setState({ notice: n })
+}
+
+/** A notice that clears itself, e.g. "Now in ML study" after switching sessions. */
+function flash(n: Notice, ms = 2500): void {
+  notice(n)
+  setTimeout(() => {
+    if (getState().notice === n) notice(null)
+  }, ms)
 }
 
 function timeLabel(iso: string): string {
@@ -150,47 +161,93 @@ function apply(effects: Effect[]): void {
 
 // ------------------------------------------------------------------ session lifecycle
 
-export async function startSession(name: string): Promise<void> {
+/** Why a session can't run right now, shown to the user; null when it can. */
+async function cannotObserve(): Promise<Notice | null> {
   const health = lastHealth() ?? (await runHealth({ skipModel: true }))
   if (!health.checks.find((c) => c.id === 'screen' && c.status === 'ok')) {
-    notice({ kind: 'screen-access' })
-    return
+    return { kind: 'screen-access' }
   }
   // The session is saved on this Mac (SQLite) and uploaded to TigerData when it ends,
   // so only the local store has to work to start.
   const localStore = store.localStatus()
-  if (!localStore.ok) {
-    setState({ saving: false, notice: { kind: 'not-saving', detail: localStore.detail } })
+  return localStore.ok ? null : { kind: 'not-saving', detail: localStore.detail }
+}
+
+/** Make `s` the live session and start observing. Nothing from another session carries over. */
+async function enterSession(s: { id: number; name: string; startedAt: string }): Promise<void> {
+  sessionId = s.id
+  captures.clear()
+  notePromises.clear()
+  livePage = null
+  currentTopic = null
+  notedThumb = null
+  core.unpin() // a selection from an earlier session isn't this session's context
+  lastOutput = null
+  lastRun = null
+  setState({
+    session: { id: s.id, name: s.name, startedAt: s.startedAt, status: 'active' },
+    observing: 'on',
+    saving: true,
+    notice: null,
+    suggestions: null,
+    answer: null,
+    lastAnswerTitle: null,
+    nudge: false,
+    selection: null,
+    stats: await store.sessionStats(s.id).catch(() => ({ captures: 0, answers: 0, tabs: 0 }))
+  })
+  windows.closeStart()
+  beginObserving()
+}
+
+export async function startSession(name: string): Promise<void> {
+  const blocked = await cannotObserve()
+  if (blocked) {
+    setState({ notice: blocked, ...(blocked.kind === 'not-saving' ? { saving: false } : {}) })
     return
   }
   try {
-    const s = await store.createSession(name.trim() || 'Session')
-    sessionId = s.id
-    captures.clear()
-    notePromises.clear()
-    livePage = null
-    core.unpin() // a selection from an earlier session isn't this session's context
-    setState({
-      session: {
-        id: s.id,
-        name: name.trim() || 'Session',
-        startedAt: s.startedAt,
-        status: 'active'
-      },
-      observing: 'on',
-      saving: true,
-      notice: null,
-      suggestions: null,
-      answer: null,
-      nudge: false,
-      stats: { captures: 0, answers: 0, tabs: 0 },
-      selection: null
-    })
-    windows.closeStart()
-    beginObserving()
+    if (sessionId) await endSession()
+    const label = name.trim() || 'Session'
+    const s = await store.createSession(label)
+    await enterSession({ id: s.id, name: label, startedAt: s.startedAt })
   } catch (err) {
     persistenceFailed(err)
   }
+}
+
+/**
+ * Pick up a session where it was left. Whatever was running is ended first (and
+ * uploaded), so only one session ever observes and each keeps its own context.
+ */
+export async function continueSession(id: number): Promise<void> {
+  if (id === sessionId) {
+    windows.closeStart()
+    if (getState().observing === 'paused') await resume()
+    return
+  }
+  const blocked = await cannotObserve()
+  if (blocked) {
+    setState({ notice: blocked, ...(blocked.kind === 'not-saving' ? { saving: false } : {}) })
+    return
+  }
+  try {
+    const target = await store.getSession(id)
+    if (!target) return
+    if (sessionId) await endSession()
+    await store.reopenSession(id)
+    await enterSession({ id, name: target.name, startedAt: target.startedAt })
+    flash({ kind: 'switched', detail: target.name })
+  } catch (err) {
+    persistenceFailed(err)
+  }
+}
+
+/** fn 1–9 / ⌃⌥1–9: jump to the session in that slot, from anywhere. */
+export async function switchToSlot(slot: number): Promise<void> {
+  const target = await store.sessionBySlot(slot).catch(() => null)
+  if (!target) return flash({ kind: 'switched', detail: `No session on ${slot}` })
+  await continueSession(target.id)
 }
 
 function beginObserving(): void {
@@ -235,6 +292,7 @@ export async function endSession(): Promise<void> {
   stopTimers()
   await flushActivity()
   core.setObserving(false)
+  core.setPanelOpen(false) // the panel closes below; a held screen change dies with the session
   cancelExecution()
   sessionId = null
   livePage = null
@@ -400,6 +458,17 @@ async function onFrame(frame: Frame): Promise<void> {
   }
   activity.push(row)
   if (!frame.changed) return
+
+  // The pixel diff says the screen changed. Ask whether it is really different content
+  // before re-noting it and replacing the ideas; if not, this was just more of the same.
+  const thumb = changeJudgeEnabled ? thumbnail(frame.png) : null
+  if (thumb && notedThumb && !(await meaningfulChange(notedThumb, thumb, sid))) {
+    row.changed = false
+    row.dwellMs = now - lastChangeAt
+    return
+  }
+  if (sid !== sessionId) return // the session ended or switched while that was decided
+  notedThumb = thumb
   lastChangeAt = now
 
   // Persist first: file, then row (pending → committed). Only committed captures get notes.
@@ -429,11 +498,34 @@ async function onFrame(frame: Frame): Promise<void> {
   apply(core.onCapture(id, true))
 }
 
+/**
+ * What this session has covered so far, for the note model: it lets the ideas for a new
+ * screen build on the session (connections, follow-up questions) rather than treat
+ * every page as the first one. Only this session's notes are read.
+ */
+async function sessionContext(sid: number): Promise<string> {
+  const notes = await store.recentNotes(sid, 24).catch(() => [])
+  const seen = new Set<string>()
+  const lines: string[] = []
+  for (const n of notes) {
+    const topic = n.topic?.trim() || n.body.slice(0, 40)
+    if (seen.has(topic)) continue
+    seen.add(topic)
+    lines.push(`- ${topic}: ${n.body.replace(/\s+/g, ' ').slice(0, 200)}`)
+    if (lines.length === 8) break
+  }
+  if (!lines.length) return ''
+  const name = getState().session?.name ?? 'Session'
+  return `Session "${name}". Covered earlier, most recent first:\n${lines.join('\n')}`
+}
+
 async function noteFor(sid: number, mem: CaptureMem, frame: Frame): Promise<VisionNote | null> {
   try {
     const page = livePage && Date.now() - livePage.at < LIVE_PAGE_MS ? livePage : null
+    const soFar = await sessionContext(sid)
     const note = await makeVisionNote(frame.png, frame.hash, frame.meta, sid, page, {
-      selection: mem.source === 'selection'
+      selection: mem.source === 'selection',
+      sessionContext: soFar
     })
     mem.note = note
     currentTopic = note.topic
@@ -441,35 +533,66 @@ async function noteFor(sid: number, mem: CaptureMem, frame: Frame): Promise<Visi
       mem.pageId = page.id
       await store.linkCaptureToPage(mem.id, page.id)
     }
-    const file = await writeNoteFile(
-      notesDir(sid),
-      `capture-${mem.id}`,
-      {
-        capture_id: mem.id,
-        captured_at: mem.capturedAt,
-        app: frame.meta.appName,
-        window_title: frame.meta.windowTitle,
-        url: frame.meta.url,
-        topic: note.topic,
-        page_id: mem.pageId,
-        provenance: 'observed'
-      },
-      note.note
+    // Saving it into the session's context happens in the background, so ideas for
+    // this screen never wait on that decision.
+    void remember(sid, mem, frame, note, soFar).catch((err) =>
+      console.warn('note not saved:', (err as Error).message)
     )
-    await store.setCaptureNote(mem.id, note.note, file)
-    await store.insertNote({
-      sessionId: sid,
-      captureId: mem.id,
-      provenance: 'observed',
-      topic: note.topic,
-      body: note.note
-    })
-    scheduleIndex(sid)
     return note
   } catch (err) {
     console.warn('vision note failed:', (err as Error).message)
     return null
   }
+}
+
+/**
+ * Add a noted screen to the session's context (search index and Graphify notes),
+ * unless it clearly has nothing to do with the session. The note is kept on the
+ * capture either way, so the Sessions window still shows what was seen.
+ */
+async function remember(
+  sid: number,
+  mem: CaptureMem,
+  frame: Frame,
+  note: VisionNote,
+  soFar: string
+): Promise<void> {
+  // An area the user selected on purpose always belongs. Otherwise, with nothing covered
+  // yet there is nothing to compare against: keep it.
+  const belongs =
+    mem.source === 'selection' ||
+    !changeJudgeEnabled ||
+    !soFar ||
+    (await belongsInSession(soFar, note.topic, note.note, sid))
+  if (!belongs) {
+    console.log(`kept out of session context: ${note.topic}`)
+    await store.setCaptureNote(mem.id, note.note, null)
+    return
+  }
+  const file = await writeNoteFile(
+    notesDir(sid),
+    `capture-${mem.id}`,
+    {
+      capture_id: mem.id,
+      captured_at: mem.capturedAt,
+      app: frame.meta.appName,
+      window_title: frame.meta.windowTitle,
+      url: frame.meta.url,
+      topic: note.topic,
+      page_id: mem.pageId,
+      provenance: 'observed'
+    },
+    note.note
+  )
+  await store.setCaptureNote(mem.id, note.note, file)
+  await store.insertNote({
+    sessionId: sid,
+    captureId: mem.id,
+    provenance: 'observed',
+    topic: note.topic,
+    body: note.note
+  })
+  scheduleIndex(sid)
 }
 
 // ------------------------------------------------------------------ selected area
@@ -498,7 +621,6 @@ function showPanelAgain(): void {
   core.setPanelOpen(true)
   apply(core.requestNow())
   setState({ panel: view, nudge: false })
-  windows.setPanelView(view)
   windows.showPanel()
 }
 
@@ -557,7 +679,6 @@ export async function finishSelection(rect: SelectionRect): Promise<void> {
   })
   core.setPanelOpen(true)
   apply(core.pin(id))
-  windows.setPanelView('ideas')
   windows.showPanel()
 }
 
@@ -682,14 +803,13 @@ export function openPanel(): void {
   // Fresh ideas for the current screen, unless the shown ones are already for it.
   apply(core.requestNow())
   setState({ panel: view, nudge: false })
-  windows.setPanelView(view)
   windows.showPanel()
 }
 
 export function closePanel(): void {
-  core.setPanelOpen(false)
+  const held = core.setPanelOpen(false) // a screen change that waited for the panel to close
   setState({ panel: 'closed', nudge: false })
-  windows.setPanelView('closed')
+  apply(held)
   windows.hidePanel()
 }
 
@@ -700,12 +820,10 @@ export function togglePanel(): void {
 
 export function showShortcuts(): void {
   setState({ panel: 'shortcuts' })
-  windows.setPanelView('shortcuts')
 }
 
 export function backToIdeas(): void {
   setState({ panel: 'ideas' })
-  windows.setPanelView('ideas')
   apply(core.requestNow())
 }
 
@@ -805,7 +923,6 @@ async function execute(run: {
   }
   core.setPanelOpen(true)
   setState({ answer: base, panel: 'answer', nudge: false, notice: null })
-  windows.setPanelView('answer')
   windows.showPanel()
 
   // The action row is written alongside the model call rather than ahead of it.

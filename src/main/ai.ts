@@ -7,6 +7,8 @@ const openrouter = createOpenRouter({ apiKey: config.openrouterKey })
 // fastModel: vision notes and ideas. answerModel: the assistance the user picks.
 export const fastModel = openrouter(config.fastModel)
 export const answerModel = openrouter(config.answerModel)
+/** Makes Klair's judgement calls: is this a real change, does this belong in the session (judge.ts). */
+export const changeModel = openrouter(config.changeModel)
 
 const NO_REASONING = { providerOptions: { openrouter: { reasoning: { enabled: false } } } }
 const keepsReasoning = new Set<string>()

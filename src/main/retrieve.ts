@@ -3,17 +3,16 @@ import { readFile, readdir } from 'fs/promises'
 import { join } from 'path'
 import type { Provenance } from '../shared/types'
 import { config } from './config'
-import * as db from './db'
 import * as store from './local'
 import { queryContext } from './graphify'
 import { baselineMode } from './metrics'
 import { graphPath, notesDir } from './paths'
 
 // One entry point for "relevant history": Graphify graph context plus keyword search
-// over notes, deduped, labelled with provenance and trimmed to a budget. Notes from
-// the running session (and any not yet uploaded) are searched in the local SQLite
-// store; earlier, uploaded sessions are searched in TigerData. Any one source
-// failing still leaves the others.
+// over notes, deduped, labelled with provenance and trimmed to a budget. Both look
+// only at the session the user is in (its graph, its notes in the local SQLite
+// store), so one session's material never reaches another's answers. Either source
+// failing still leaves the other.
 
 export interface Retrieved {
   text: string
@@ -40,17 +39,16 @@ export async function retrieve(
   const sources: Provenance[] = []
   let graphOk = false
 
-  const [graph, localHits, remoteHits] = await Promise.allSettled([
+  const [graph, found] = await Promise.allSettled([
     queryContext(graphPath(opts.sessionId), question, Math.round(config.retrievalBudget * 0.6)),
     store.searchNotes(question, {
       sessionId: opts.sessionId,
       excludeCaptureId: opts.excludeCaptureId,
-      limit: 6
-    }),
-    db.getPool() ? db.searchNotes(question, { limit: 4 }) : Promise.resolve([])
+      limit: 8
+    })
   ])
-  const hits = [localHits, remoteHits].flatMap((h) => (h.status === 'fulfilled' ? h.value : []))
-  const searchOk = localHits.status === 'fulfilled' || remoteHits.status === 'fulfilled'
+  const hits = found.status === 'fulfilled' ? found.value : []
+  const searchOk = found.status === 'fulfilled'
 
   if (graph.status === 'fulfilled' && graph.value) {
     graphOk = true
@@ -66,16 +64,14 @@ export async function retrieve(
       const key = h.body.slice(0, 120)
       if (seen.has(key)) continue
       seen.add(key)
-      const earlier = h.origin === 'remote' || h.sessionId !== opts.sessionId
       const label =
         h.provenance === 'assistant'
           ? `Klair's earlier answer · ${timeLabel(h.createdAt)}`
-          : `${earlier ? 'Earlier session' : 'Earlier tab'} · ${timeLabel(h.createdAt)}`
+          : `Earlier in this session · ${timeLabel(h.createdAt)}`
       sources.push({
         kind: h.provenance === 'assistant' ? 'assistant' : 'earlier',
         label,
-        // Only local capture ids can open a screenshot on this Mac.
-        captureId: h.origin === 'local' ? (h.captureId ?? undefined) : undefined
+        captureId: h.captureId ?? undefined
       })
       lines.push(
         `### ${label}${h.provenance === 'assistant' ? ' (generated earlier, not observed)' : ''}\n${h.body.slice(0, 900)}`

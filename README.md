@@ -14,7 +14,7 @@ A background macOS assistant that keeps you on your current screen. A see-throug
 | ------------------ | ------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
 | Desktop app        | Electron + electron-vite, pnpm                                                                                                  | `src/main`, `src/preload`                                |
 | Interface          | React + TypeScript + Tailwind v4                                                                                                | `src/renderer`                                           |
-| AI                 | Vercel AI SDK via OpenRouter (Gemini 3.5 Flash-Lite for screen notes, GPT-5.4 mini for answers)                                 | `src/main/ai.ts`, `suggest.ts`, `execute.ts`, `notes.ts` |
+| AI                 | Vercel AI SDK via OpenRouter (Gemini 3.5 Flash-Lite for screen notes, GPT-5.4 mini for answers, Jev Router to judge whether a changed screen is really new content and whether it belongs in the session's context)                                 | `src/main/ai.ts`, `suggest.ts`, `execute.ts`, `notes.ts` |
 | Live session store | SQLite (`node:sqlite`, FTS5): the running session, uploaded when it ends                                                        | `src/main/local.ts`                                      |
 | Database           | TigerData (Postgres + TimescaleDB): ended sessions, activity time-series, insights aggregate, BM25 search over earlier sessions | `src/main/db.ts`, `upload.ts`                            |
 | Cache              | SQLite (`node:sqlite`): screenshot hash → note, safe to delete                                                                  | `src/main/cache.ts`                                      |
@@ -44,7 +44,7 @@ pnpm dev
    pipx install graphifyy   # note the double y
    ```
    Klair finds `graphify` in `~/.local/bin`, `/opt/homebrew/bin` or your shell's PATH by itself. Set `GRAPHIFY_BIN` only if it's somewhere else. Without Graphify, answers still work using TigerData search and the current screen.
-4. **fn key (optional):** `pnpm build:native` builds `native/fn-key` against Electron, then grant Input Monitoring. Until then, use ⌃⌥K / ⌃⌥P / ⌃⌥Q.
+4. **fn key (optional):** `pnpm build:native` builds `native/fn-key` against Electron, then grant Input Monitoring. Until then, use ⌃⌥K / ⌃⌥P / ⌃⌥Q. Rebuild it after pulling changes to `native/fn-key` (fn 1–9 for switching sessions needs the current build; ⌃⌥1–9 always works).
 5. **Tiger MCP for builders (optional):** `tiger mcp install claude-code` lets Claude Code inspect the schema and test queries.
 6. **Chrome extension (optional):** in Chrome open `chrome://extensions`, turn on **Developer mode**, click **Load unpacked** and pick the repo's `extension/` folder. While a session is observing, every page you open in Chrome is sent to Klair in full (its whole rendered text, not just the part in view) and becomes part of the session. See [Chrome extension](#chrome-extension).
 
@@ -105,7 +105,7 @@ The selection is **pinned as the context**: ideas, "Ask about your selection…"
 
 ## Scripts
 
-- `pnpm dev`: run with hot reload
+- `pnpm dev`: run with hot reload; the app restarts itself when main-process code (`src/main`) changes
 - `pnpm typecheck` / `pnpm lint` / `pnpm test`
 - `pnpm build:native`: build the fn-key addon (macOS)
 - `pnpm build:mac`: package the macOS app

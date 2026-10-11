@@ -5,9 +5,12 @@ import { activeWindow, type ActiveWindow } from './activewindow'
 
 // Periodic screen capture with cheap local change detection. The screen is checked
 // every interval, but a frame only counts as `changed` (and is stored, noted and
-// offered ideas for) when it differs substantially from the last *stored* frame:
-// comparing with the stored frame, not the previous tick, lets slow edits (typing,
-// gradual scrolling) add up instead of slipping under the threshold one tick at a time.
+// offered ideas for) when it is a *meaningful* change, decided by ChangeDetector:
+//   1. it differs substantially from the last *stored* frame (comparing with the stored
+//      frame, not the previous tick, lets slow edits add up), and
+//   2. the screen has stopped moving. Scrolling, video or a terminal printing output
+//      differ on every tick; storing each of those would re-note the screen and
+//      replace the ideas every few seconds. One settled screen is stored instead.
 // Klair's own windows use setContentProtection(true), so they are excluded on macOS.
 
 export interface Frame {
@@ -24,6 +27,9 @@ const THUMB_W = 64
 const THUMB_H = 40
 const CELL_DELTA = 24 // grey levels (0–255) a cell must move to count as changed
 export const CHANGE_SHARE = 0.05 // share of cells that must change: "substantial"
+export const SETTLE_SHARE = 0.02 // tick-to-tick change below this means the screen is still
+export const MAX_MOVING_MS = 20_000 // a screen that never settles is still stored this often
+const RECHECK_MS = 1000 // look again this soon while waiting for the screen to settle
 
 function grey(img: NativeImage): Uint8Array {
   const small = img.resize({ width: THUMB_W, height: THUMB_H, quality: 'good' })
@@ -46,10 +52,43 @@ export function changedShare(a: Uint8Array, b: Uint8Array): number {
   return n / a.length
 }
 
+/** same: nothing new. moving: different, but still changing. changed: store this frame. */
+export type Change = 'same' | 'moving' | 'changed'
+
+/** Decides which frames are a meaningful change. Pure, so it can be tested. */
+export class ChangeDetector {
+  private stored: Uint8Array | null = null // thumbnail of the last stored frame
+  private storedMeta = ''
+  private prev: Uint8Array | null = null // thumbnail of the previous tick
+  private movingSince: number | null = null
+
+  observe(g: Uint8Array, metaKey: string, now: number): Change {
+    const prev = this.prev
+    this.prev = g
+    if (this.stored === null) return this.store(g, metaKey)
+    const differs = changedShare(g, this.stored) >= CHANGE_SHARE || metaKey !== this.storedMeta
+    if (!differs) {
+      this.movingSince = null
+      return 'same'
+    }
+    this.movingSince ??= now
+    const still = prev !== null && changedShare(g, prev) < SETTLE_SHARE
+    if (!still && now - this.movingSince < MAX_MOVING_MS) return 'moving'
+    return this.store(g, metaKey)
+  }
+
+  private store(g: Uint8Array, metaKey: string): Change {
+    this.stored = g
+    this.storedMeta = metaKey
+    this.movingSince = null
+    return 'changed'
+  }
+}
+
 export class CaptureLoop {
   private timer: NodeJS.Timeout | null = null
-  private storedGrey: Uint8Array | null = null // thumbnail of the last stored frame
-  private storedMetaKey = ''
+  private recheck: NodeJS.Timeout | null = null
+  private detector = new ChangeDetector()
   private busy = false
 
   constructor(
@@ -64,14 +103,15 @@ export class CaptureLoop {
 
   start(): void {
     if (this.timer) return
-    this.storedGrey = null
+    this.detector = new ChangeDetector()
     this.timer = setInterval(() => void this.tick(), this.intervalMs)
     void this.tick()
   }
 
   stop(): void {
     if (this.timer) clearInterval(this.timer)
-    this.timer = null
+    if (this.recheck) clearTimeout(this.recheck)
+    this.timer = this.recheck = null
   }
 
   private async tick(): Promise<void> {
@@ -92,13 +132,14 @@ export class CaptureLoop {
       const meta = await activeWindow()
       const g = grey(src.thumbnail)
       const metaKey = `${meta.appName}|${meta.windowTitle}|${meta.url}`
-      const changed =
-        this.storedGrey === null ||
-        changedShare(g, this.storedGrey) >= CHANGE_SHARE ||
-        metaKey !== this.storedMetaKey
-      if (changed) {
-        this.storedGrey = g
-        this.storedMetaKey = metaKey
+      const change = this.detector.observe(g, metaKey, Date.now())
+      const changed = change === 'changed'
+      // Waiting for the screen to settle: don't make the user wait a whole interval.
+      if (change === 'moving' && this.timer && !this.recheck) {
+        this.recheck = setTimeout(() => {
+          this.recheck = null
+          void this.tick()
+        }, RECHECK_MS)
       }
       const png = changed ? src.thumbnail.toPNG() : Buffer.alloc(0)
       await this.onFrame({

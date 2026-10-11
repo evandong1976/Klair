@@ -12,7 +12,7 @@ export interface Provenance {
 
 export interface Idea {
   id: string
-  key: number // 1, 2 or 3 → ⌘1–3
+  key: number // 1–9 → ⌘1–9
   title: string
   subtitle: string
   kind: 'summary' | 'code' | 'quiz' | 'explain' | 'other'
@@ -55,6 +55,7 @@ export type NoticeKind =
   | 'not-saving'
   | 'partial-page'
   | 'stale'
+  | 'switched' // just moved to another session; detail is its name
 
 export interface Notice {
   kind: NoticeKind
@@ -134,6 +135,8 @@ export interface SessionListItem {
   startedAt: string
   endedAt: string | null
   status: SessionInfo['status']
+  /** 1–9 on the fn 1–9 / ⌃⌥1–9 session switcher; null when all nine are taken. */
+  slot: number | null
   upload: { status: UploadStatus; error: string | null; remoteId: number | null }
 }
 
@@ -191,6 +194,8 @@ export interface KlairApi {
   setFlowerInteractive(interactive: boolean): Promise<void>
 
   startSession(name: string): Promise<void>
+  /** Continue an existing session; whatever was running is ended first. */
+  continueSession(id: number): Promise<void>
   pause(): Promise<void>
   resume(): Promise<void>
   endSession(): Promise<void>
@@ -235,6 +240,7 @@ export const KLAIR_INVOKE_METHODS: KlairInvokeMethod[] = [
   'setPanelSize',
   'setFlowerInteractive',
   'startSession',
+  'continueSession',
   'pause',
   'resume',
   'endSession',

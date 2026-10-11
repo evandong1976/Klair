@@ -51,7 +51,8 @@ app.whenReady().then(async () => {
   const keys = registerShortcuts({
     toggle: () => c.togglePanel(),
     pause: () => void c.togglePause(),
-    quiet: () => c.toggleQuiet()
+    quiet: () => c.toggleQuiet(),
+    session: (slot) => void c.switchToSlot(slot)
   })
   if (!keys.fn && !keys.fallback.toggle) {
     setState({

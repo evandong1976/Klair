@@ -1,12 +1,22 @@
 import { useEffect, useState } from 'react'
 import { Flower } from '../components/Flower'
-import { useBloom } from '../lib/useBloom'
 import { Key } from '../components/ui'
 import { klair, useKlairState } from '../lib/useKlair'
 import { prettyAccel } from '../../../shared/keys'
 
 // Top-right corner (Main.dc.html): the see-through flower, plus a pill when
 // there's something to say. The window is click-through except over the pill.
+//
+// When Klair opens, this flower steps aside: the panel opens over this corner and draws
+// the flower itself, starting at exactly this size and place, then blooms it and lets it
+// sink into the panel's backdrop (BackdropFlower in Panel.tsx). One window animating
+// the whole movement is what keeps it smooth and free of a visible handover.
+
+/** The resting corner flower. The panel's backdrop starts from these. */
+export const CORNER_RES = 11
+export const CORNER_CELL = 4
+/** Its top-right corner sits this far inside the window's (see the p-0.5 wrapper). */
+export const CORNER_INSET = 2
 
 const PILL =
   'surface flex items-center gap-2.5 h-[42px] pl-4 pr-2 rounded-full text-[14px] font-bold text-ink cursor-pointer'
@@ -22,10 +32,6 @@ export function FlowerWindow(): React.JSX.Element | null {
   }, [])
 
   const open = s?.flower === 'open'
-  const big = open && (s?.panel === 'ideas' || s?.panel === 'shortcuts')
-  const res = useBloom(open ? 30 : 11)
-  const cell = open ? (big ? 4 : 3) : 4
-
   const hasPill =
     !!s && s.flower !== 'off' && !open && (!!s.notice || s.observing === 'paused' || s.nudge)
   useEffect(() => {
@@ -58,6 +64,14 @@ export function FlowerWindow(): React.JSX.Element | null {
         <button type="button" {...hover} onClick={() => void klair.openPanel()} className={PILL}>
           Screen access needed
         </button>
+      )
+    } else if (s.notice?.kind === 'switched') {
+      pill = (
+        <span className="surface flex items-center h-[42px] px-4 rounded-full text-[13.5px] font-semibold text-ink-2">
+          {s.notice.detail?.startsWith('No session')
+            ? s.notice.detail
+            : `Now in ${s.notice.detail}`}
+        </span>
       )
     } else if (s.notice?.kind === 'stale') {
       pill = (
@@ -94,12 +108,15 @@ export function FlowerWindow(): React.JSX.Element | null {
   return (
     <div className="fixed top-0 right-0 flex flex-row-reverse items-start gap-3 p-0.5">
       <div
-        className={!open && s.flower !== 'paused' ? 'klair-bob' : ''}
+        className={`${!open && s.flower !== 'paused' ? 'klair-bob' : ''} ${
+          // Hidden a beat after the panel opens, so the two flowers overlap rather than blink.
+          open ? 'opacity-0 transition-opacity duration-0 delay-[90ms]' : ''
+        }`}
         style={{ filter: 'drop-shadow(0 1px 1px rgba(90,60,55,0.28))' }}
       >
         <Flower
-          res={res}
-          cell={cell}
+          res={CORNER_RES}
+          cell={CORNER_CELL}
           paused={s.flower === 'paused'}
           label={
             open

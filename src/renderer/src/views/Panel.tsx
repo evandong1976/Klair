@@ -1,12 +1,16 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { motion } from 'motion/react'
 import type { AnswerState, KlairState, SuggestionSet } from '../../../shared/types'
 import { Block } from '../components/blocks'
 import { AnimatedShinyText } from '../components/magicui/animated-shiny-text'
 import { BlurFade } from '../components/magicui/blur-fade'
 import { BorderBeam } from '../components/magicui/border-beam'
 import { MagicCard } from '../components/magicui/magic-card'
+import { Flower } from '../components/Flower'
 import { Button, CloseButton, Key, PixelLabel, PixelProgress, SourceChips } from '../components/ui'
+import { useBloom } from '../lib/useBloom'
 import { isMod, klair, useKlairState } from '../lib/useKlair'
+import { CORNER_CELL, CORNER_INSET, CORNER_RES } from './FlowerWindow'
 import { NoticeCard } from './NoticeCard'
 import { ShortcutsView } from './Shortcuts'
 
@@ -76,7 +80,7 @@ export function PanelWindow(): React.JSX.Element | null {
         e.preventDefault()
         return void klair.startSelection()
       }
-      if (s.panel === 'ideas' && !e.shiftKey && ['1', '2', '3'].includes(e.key)) {
+      if (s.panel === 'ideas' && !e.shiftKey && /^[1-9]$/.test(e.key)) {
         e.preventDefault()
         return void klair.pickKey(Number(e.key))
       }
@@ -142,8 +146,9 @@ export function PanelWindow(): React.JSX.Element | null {
     <div ref={rootRef} style={{ width }} className="p-0">
       <section aria-label="Klair" className="rounded-[16px] text-ink">
         <MagicCard contentClassName="p-5">
+          {view !== 'closed' ? <BackdropFlower /> : null}
           <BlurFade key={view} className="flex flex-col gap-4">
-            {state.notice && state.notice.kind !== 'no-history' && state.notice.kind !== 'stale' ? (
+            {state.notice && !['no-history', 'stale', 'switched'].includes(state.notice.kind) ? (
               <NoticeCard notice={state.notice} />
             ) : null}
             {view === 'shortcuts' ? (
@@ -204,6 +209,33 @@ function SelectionChip({
         Use whole screen
       </Button>
     </div>
+  )
+}
+
+// The flower as the panel's backdrop. It starts as the corner flower (same pixels, same
+// place: FlowerWindow), then in one continuous movement gains detail, grows and settles
+// faintly behind the content. Detail (res) and size are separate, so the growth is a
+// smooth scale while the pixels resolve underneath it.
+const BACKDROP_PX = 210
+const BACKDROP_RES = 30
+const START_SCALE = (CORNER_RES * CORNER_CELL) / BACKDROP_PX
+function BackdropFlower(): React.JSX.Element {
+  const res = useBloom(BACKDROP_RES, CORNER_RES)
+  return (
+    <motion.div
+      aria-hidden="true"
+      className="pointer-events-none absolute -z-10 origin-top-right"
+      // The card's 1px border sits between the window edge and this element.
+      style={{ top: CORNER_INSET - 1, right: CORNER_INSET - 1 }}
+      initial={{ scale: START_SCALE, opacity: 1 }}
+      animate={{ scale: 1, opacity: [1, 1, 0.22] }}
+      transition={{
+        scale: { duration: 0.9, ease: [0.22, 1, 0.36, 1] },
+        opacity: { duration: 0.9, times: [0, 0.3, 1], ease: 'easeOut' }
+      }}
+    >
+      <Flower res={res} cell={7} size={BACKDROP_PX} label="" />
+    </motion.div>
   )
 }
 
@@ -375,7 +407,7 @@ function IdeasView({
 
       <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 text-[12.5px] font-semibold text-ink-3">
         <span className="flex items-center gap-1.5">
-          <Key variant="small">⌘1–3</Key> pick
+          <Key variant="small">{`⌘1–${Math.max(3, set?.ideas.length ?? 3)}`}</Key> pick
         </span>
         <span className="flex items-center gap-1.5">
           <Key variant="small">⌘↑↓</Key> move

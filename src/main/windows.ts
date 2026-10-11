@@ -1,11 +1,10 @@
 import { app, BrowserWindow, nativeTheme, screen, shell, type Rectangle } from 'electron'
 import { join } from 'path'
 import { is } from '@electron-toolkit/utils'
-import type { PanelView } from '../shared/types'
 
 // Window plan (DESIGN.md §7):
 //   flower   transparent, click-through (except the nudge pill), non-focusable, top-right
-//   panel    focusable panel under the flower; takes focus while open
+//   panel    focusable panel in the same corner, drawn over the bloomed flower; takes focus while open
 //   start / sessions  normal windows; tray popover under the menu bar icon
 // Frosted glass is native macOS vibrancy (CSS backdrop-filter can't blur other apps).
 // macOS rounds a vibrancy window at 16px, so the panel and tray shells use that radius
@@ -23,7 +22,6 @@ let startWin: BrowserWindow | null = null
 let sessionsWin: BrowserWindow | null = null
 let trayWin: BrowserWindow | null = null
 let panelSize = { width: 460, height: 420 }
-let panelView: PanelView = 'closed'
 
 const isMac = process.platform === 'darwin'
 
@@ -112,8 +110,9 @@ export function createPanelWindow(): BrowserWindow {
 function positionPanel(): void {
   if (!panel) return
   const wa = workArea()
-  const flowerOpen = panelView === 'ideas' ? 120 : 90
-  const y = wa.y + TOP + flowerOpen + 6
+  // The panel opens over the corner the flower sits in: the bloomed flower becomes the
+  // panel's backdrop (Panel.tsx), so it takes no room of its own above the panel.
+  const y = wa.y + TOP
   const maxH = wa.y + wa.height - y - 12
   const height = Math.min(panelSize.height, maxH)
   panel.setBounds({
@@ -127,11 +126,6 @@ function positionPanel(): void {
 
 export function resizePanel(width: number, height: number): void {
   panelSize = { width: Math.max(320, width), height: Math.max(120, height) }
-  positionPanel()
-}
-
-export function setPanelView(view: PanelView): void {
-  panelView = view
   positionPanel()
 }
 

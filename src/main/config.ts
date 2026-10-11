@@ -23,6 +23,8 @@ export const config = {
   // Any OpenRouter model that accepts images works; override with the env vars.
   fastModel: pick('FAST_MODEL') ?? 'google/gemini-3.5-flash-lite',
   answerModel: pick('ANSWER_MODEL') ?? 'openai/gpt-5.4-mini',
+  // Decides whether a changed screen is worth new notes and ideas. "off" trusts the pixel diff alone.
+  changeModel: pick('CHANGE_MODEL') ?? 'typesafe/jev-router',
 
   captureMs: num('CAPTURE_MS', 4000),
   dwellMs: num('DWELL_MS', 60_000),

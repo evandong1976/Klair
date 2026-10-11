@@ -48,16 +48,36 @@ test('a session round-trips through the local store and its search', async () =>
   assert.equal((await local.timeline(id))[0].kind, 'seen')
 })
 
-test('search skips other sessions once they are in TigerData', async () => {
+test("search never returns another session's notes", async () => {
   const current = await sessionWithNotes('beta')
-  const earlier = await sessionWithNotes('gamma')
-  const bodies = async (): Promise<string[]> =>
-    (await local.searchNotes('gradient', { sessionId: current, limit: 20 })).map((h) => h.body)
-  assert.ok((await bodies()).some((b) => b.startsWith('gamma')))
-  await local.setSessionStatus(earlier, 'ended')
-  local.setUploadStatus(earlier, 'synced', { remoteId: 99 })
-  assert.ok(!(await bodies()).some((b) => b.startsWith('gamma')))
-  assert.ok((await bodies()).some((b) => b.startsWith('beta')))
+  await sessionWithNotes('gamma')
+  const bodies = (await local.searchNotes('gradient', { sessionId: current, limit: 20 })).map(
+    (h) => h.body
+  )
+  assert.ok(bodies.some((b) => b.startsWith('beta')))
+  assert.ok(!bodies.some((b) => b.startsWith('gamma')))
+})
+
+test('sessions get switcher slots, and an ended one can be continued', async () => {
+  const { id } = await local.createSession('slotted')
+  const slot = (await local.getSession(id))?.slot
+  assert.ok(slot && slot >= 1 && slot <= local.SLOTS)
+  assert.equal((await local.sessionBySlot(slot))?.id, id)
+
+  await local.setSessionStatus(id, 'ended')
+  local.setUploadStatus(id, 'synced', { remoteId: 7 })
+  await local.reopenSession(id)
+  const s = await local.getSession(id)
+  assert.equal(s?.status, 'active')
+  assert.equal(s?.endedAt, null)
+  assert.equal(s?.upload.status, 'local') // changed since upload, so it uploads again
+  assert.equal(s?.slot, slot)
+
+  // Only nine sessions hold a slot; the rest have none until one is freed.
+  for (let i = 0; i < local.SLOTS + 1; i++) await local.createSession(`extra-${i}`)
+  const slots = (await local.listSessions()).map((x) => x.slot).filter((x) => x !== null)
+  assert.equal(new Set(slots).size, slots.length)
+  assert.equal(slots.length, local.SLOTS)
 })
 
 test('abandoned sessions are ended and queued for upload; export carries every row', async () => {
