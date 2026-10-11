@@ -1,4 +1,5 @@
 import type { AnswerBlock } from './blocks'
+import type { FlowerStyleId } from './flower'
 
 export type ObservingState = 'off' | 'on' | 'paused'
 export type FlowerMode = 'off' | 'observing' | 'ideas' | 'open' | 'paused'
@@ -103,6 +104,8 @@ export interface KlairState {
   dwellMs: number
   /** Electron accelerator that opens or closes Klair, e.g. "Control+Alt+K". */
   toggleKey: string
+  /** Which pixel flower is drawn everywhere (Appearance in the menu bar popover). */
+  flowerStyle: FlowerStyleId
   lastAnswerTitle: string | null
   retentionDays: number
   stats: { captures: number; answers: number; tabs: number }
@@ -112,6 +115,11 @@ export interface KlairState {
    */
   selection: { captureId: number; at: string; width: number; height: number } | null
   selecting: boolean
+  /**
+   * Nothing on screen to help with (the desktop, a lock screen, an empty window). The
+   * flower greys out and no ideas are made or offered until there is something again.
+   */
+  idle: boolean
   /** Files that finished downloading during the session; nothing is read until Add. */
   downloads: DownloadOffer[]
 }
@@ -219,6 +227,7 @@ export interface KlairApi {
   setQuiet(on: boolean): Promise<void>
   /** Resolves false if the shortcut is invalid or another app already owns it. */
   setToggleKey(accel: string): Promise<boolean>
+  setFlowerStyle(style: FlowerStyleId): Promise<void>
 
   getHealth(): Promise<HealthReport>
   runHealth(): Promise<HealthReport>
@@ -268,6 +277,7 @@ export const KLAIR_INVOKE_METHODS: KlairInvokeMethod[] = [
   'setDwellMs',
   'setQuiet',
   'setToggleKey',
+  'setFlowerStyle',
   'getHealth',
   'runHealth',
   'openSettings',

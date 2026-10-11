@@ -1,14 +1,15 @@
 import { Menu, nativeImage, Tray, type NativeImage } from 'electron'
 import { flowerPixels } from '../shared/flower'
+import { getState } from './state'
 
-// Menu bar icon: the Klair flower itself (18pt, @2x), grey while paused.
+// Menu bar icon: the chosen Klair flower itself (18pt, @2x), grey while paused.
 
 function flowerIcon(paused: boolean): NativeImage {
   const res = 18
   const cell = 2
   const size = res * cell
   const buf = Buffer.alloc(size * size * 4)
-  const px = flowerPixels(res, { paused })
+  const px = flowerPixels(res, { paused, style: getState().flowerStyle })
   for (let k = 0; k < px.length; k++) {
     const c = px[k]
     if (!c) continue

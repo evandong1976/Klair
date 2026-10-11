@@ -5,13 +5,16 @@ import {
   type KlairInvokeMethod,
   type SettingsPane
 } from '../shared/types'
+import { deepNoEmDash } from '../shared/text'
 import * as c from './controller'
 import { listSessions } from './local'
 import { retryFnKey } from './fnkey'
 import { lastHealth, runHealth } from './health'
 import { setToggleKey } from './shortcuts'
 import { uploadPending } from './upload'
-import { getState } from './state'
+import { getState, setState } from './state'
+import { cache } from './cache'
+import { isFlowerStyle } from '../shared/flower'
 import * as windows from './windows'
 
 // The narrow, typed bridge between the renderer and the background controller.
@@ -56,6 +59,11 @@ const handlers: Handlers = {
   setDwellMs: async (ms) => c.setDwellMs(Math.max(10_000, Number(ms))),
   setQuiet: async (on) => c.setQuiet(Boolean(on)),
   setToggleKey: async (accel) => setToggleKey(String(accel)),
+  setFlowerStyle: async (style) => {
+    if (!isFlowerStyle(style)) return
+    cache.set('flowerStyle', style)
+    setState({ flowerStyle: style })
+  },
   getHealth: async () => lastHealth() ?? runHealth(),
   runHealth: async () => {
     const h = await runHealth()
@@ -99,6 +107,7 @@ export function registerIpc(): void {
     KlairInvokeMethod,
     (...a: unknown[]) => unknown
   ][]) {
-    ipcMain.handle(invokeChannel(name), (_e, ...args) => fn(...args))
+    // Nothing reaches a window with an em dash in it (shared/text.ts).
+    ipcMain.handle(invokeChannel(name), async (_e, ...args) => deepNoEmDash(await fn(...args)))
   }
 }

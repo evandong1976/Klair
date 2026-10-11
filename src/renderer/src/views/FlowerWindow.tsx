@@ -102,7 +102,7 @@ export function FlowerWindow(): React.JSX.Element | null {
           </button>
         </span>
       )
-    } else if (s.nudge && s.suggestions) {
+    } else if (s.nudge && s.suggestions && !s.idle) {
       pill = (
         <button type="button" {...hover} onClick={() => void klair.openPanel()} className={PILL}>
           {`${s.suggestions.ideas.length} ideas for this section`}
@@ -115,7 +115,7 @@ export function FlowerWindow(): React.JSX.Element | null {
   return (
     <div className="fixed top-0 right-0 flex flex-row-reverse items-start gap-3 p-0.5">
       <div
-        className={`${!open && s.flower !== 'paused' ? 'klair-bob' : ''} ${
+        className={`${!open && s.flower !== 'paused' && !s.idle ? 'klair-bob' : ''} ${
           // Hidden a beat after the panel opens, so the two flowers overlap rather than blink.
           open ? 'opacity-0 transition-opacity duration-0 delay-[90ms]' : ''
         }`}
@@ -124,13 +124,16 @@ export function FlowerWindow(): React.JSX.Element | null {
         <Flower
           res={CORNER_RES}
           cell={CORNER_CELL}
-          paused={s.flower === 'paused'}
+          // Grey when paused, and when there is nothing on screen to help with.
+          paused={s.flower === 'paused' || s.idle}
           label={
             open
               ? 'Klair is open'
               : s.flower === 'paused'
                 ? 'Klair is paused'
-                : 'Klair is observing'
+                : s.idle
+                  ? 'Klair sees nothing to help with on this screen'
+                  : 'Klair is observing'
           }
         />
       </div>

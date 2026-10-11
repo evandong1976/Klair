@@ -81,7 +81,7 @@ export function PanelWindow(): React.JSX.Element | null {
         e.preventDefault()
         return void klair.startSelection()
       }
-      if (s.panel === 'ideas' && !e.shiftKey && /^[1-9]$/.test(e.key)) {
+      if (s.panel === 'ideas' && !idleNow(s) && !e.shiftKey && /^[1-9]$/.test(e.key)) {
         e.preventDefault()
         return void klair.pickKey(Number(e.key))
       }
@@ -141,7 +141,7 @@ export function PanelWindow(): React.JSX.Element | null {
   const busy =
     view === 'answer'
       ? state.answer?.status === 'pending' || state.answer?.status === 'streaming'
-      : view === 'ideas' && !!state.session && !state.suggestions
+      : view === 'ideas' && !!state.session && !state.suggestions && !idleNow(state)
 
   return (
     <div ref={rootRef} style={{ width }} className="p-0">
@@ -315,6 +315,9 @@ function AskBox({
   )
 }
 
+/** Nothing useful on screen, and no selected area standing in for it. */
+const idleNow = (s: KlairState): boolean => s.idle && !s.selection
+
 function IdeasView({
   state,
   set,
@@ -342,11 +345,24 @@ function IdeasView({
       </div>
     )
   }
+  const idle = idleNow(state)
   return (
     <>
       {state.downloads.length ? <DownloadOfferCards offers={state.downloads} /> : null}
       {state.selection ? <SelectionChip selection={state.selection} /> : null}
-      {set ? (
+      {idle ? (
+        <div className="flex flex-col gap-2">
+          <PixelLabel>Where you are</PixelLabel>
+          <h1 className="m-0 text-[19px] font-extrabold leading-[1.3]">
+            Nothing to work with here
+          </h1>
+          <p className="m-0 text-[14.5px] leading-[1.5] text-ink-2 text-pretty">
+            Klair doesn&apos;t see a page, document or anything else to help with on this screen, so
+            it hasn&apos;t made any ideas. Open what you&apos;re working on, select an area with ⌘S,
+            or ask below.
+          </p>
+        </div>
+      ) : set ? (
         <div className="flex flex-col gap-2">
           <PixelLabel>{state.selection ? 'Your selection' : 'Where you are'}</PixelLabel>
           <h1 className="m-0 text-[19px] font-extrabold leading-[1.3]">{set.whereTitle}</h1>
@@ -366,7 +382,7 @@ function IdeasView({
         </div>
       )}
 
-      {set ? (
+      {set && !idle ? (
         <nav aria-label="Ideas" className="flex flex-col gap-2">
           {set.ideas.map((idea, i) => (
             <button
@@ -408,12 +424,16 @@ function IdeasView({
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 text-[12.5px] font-semibold text-ink-3">
-        <span className="flex items-center gap-1.5">
-          <Key variant="small">{`⌘1–${Math.max(3, set?.ideas.length ?? 3)}`}</Key> pick
-        </span>
-        <span className="flex items-center gap-1.5">
-          <Key variant="small">⌘↑↓</Key> move
-        </span>
+        {idle ? null : (
+          <>
+            <span className="flex items-center gap-1.5">
+              <Key variant="small">{`⌘1–${Math.max(3, set?.ideas.length ?? 3)}`}</Key> pick
+            </span>
+            <span className="flex items-center gap-1.5">
+              <Key variant="small">⌘↑↓</Key> move
+            </span>
+          </>
+        )}
         <button
           type="button"
           onClick={() => void klair.showShortcuts()}

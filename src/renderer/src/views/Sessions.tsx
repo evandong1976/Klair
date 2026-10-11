@@ -334,7 +334,7 @@ export function SessionsWindow(): React.JSX.Element {
                     <dt className="text-muted">Topic</dt>
                     <dd className="m-0 font-semibold">
                       {detail.holding.topic}{' '}
-                      <span className="text-muted font-normal">— a guess</span>
+                      <span className="text-muted font-normal">(a guess)</span>
                     </dd>
                     <dt className="text-muted">Related</dt>
                     <dd className="m-0 font-semibold break-words">{detail.holding.related}</dd>

@@ -1,5 +1,5 @@
 /**
- * Klair pixel flower — framework-neutral reference implementation.
+ * Klair pixel flower: framework-neutral reference implementation.
  * Mirrors design/canvas/Flower.dc.html exactly; see design/DESIGN.md §3.
  *
  * The flower is a vector description sampled onto an N×N grid, so "more
@@ -16,6 +16,8 @@ export type Pixel = string | null // CSS color, or null = transparent
 
 export interface FlowerOptions {
   paused?: boolean
+  /** Which flower to draw (Appearance setting). Defaults to the blush blossom. */
+  style?: FlowerStyleId
 }
 
 export const FLOWER_COLORS = {
@@ -32,6 +34,83 @@ export const FLOWER_COLORS = {
   leafLight: '#A9B583'
 } as const
 
+type Bloom = Record<
+  'center' | 'inner' | 'crease' | 'petalMid' | 'petalOuter' | 'petalEdge' | 'budInner' | 'budOuter',
+  string
+>
+
+/**
+ * The flowers the user can pick from. Each is the same plant (stems and leaves are
+ * shared) with its own petal count and bloom colours, so every size and the bloom
+ * animation work unchanged.
+ */
+export const FLOWER_STYLES = {
+  blossom: { label: 'Blossom', petals: 5, bloom: FLOWER_COLORS },
+  buttercup: {
+    label: 'Buttercup',
+    petals: 6,
+    bloom: {
+      center: '#D9902F',
+      inner: '#E8A93F',
+      crease: '#F0C95A',
+      petalMid: '#F6D873',
+      petalOuter: '#F9E394',
+      petalEdge: '#FCEEB8',
+      budInner: '#F5D66E',
+      budOuter: '#FAE7A2'
+    }
+  },
+  marigold: {
+    label: 'Marigold',
+    petals: 8,
+    bloom: {
+      center: '#C2571B',
+      inner: '#DD7A2B',
+      crease: '#F0A04A',
+      petalMid: '#F4B05C',
+      petalOuter: '#F8C67F',
+      petalEdge: '#FBDDAA',
+      budInner: '#F5B869',
+      budOuter: '#FAD79C'
+    }
+  },
+  violet: {
+    label: 'Violet',
+    petals: 5,
+    bloom: {
+      center: '#7E5BB5',
+      inner: '#9B7BCB',
+      crease: '#B9A0DD',
+      petalMid: '#C6B1E4',
+      petalOuter: '#D9CBEE',
+      petalEdge: '#EBE2F6',
+      budInner: '#C9B6E6',
+      budOuter: '#E1D6F2'
+    }
+  },
+  bluebell: {
+    label: 'Bluebell',
+    petals: 4,
+    bloom: {
+      center: '#3F6FB5',
+      inner: '#6C93CF',
+      crease: '#93B2E0',
+      petalMid: '#A9C3E8',
+      petalOuter: '#C6D8F1',
+      petalEdge: '#E1EBF8',
+      budInner: '#B3CAEB',
+      budOuter: '#D6E3F5'
+    }
+  }
+} as const satisfies Record<string, { label: string; petals: number; bloom: Bloom }>
+
+export type FlowerStyleId = keyof typeof FLOWER_STYLES
+export const DEFAULT_FLOWER_STYLE: FlowerStyleId = 'blossom'
+export const isFlowerStyle = (v: unknown): v is FlowerStyleId =>
+  typeof v === 'string' && Object.hasOwn(FLOWER_STYLES, v)
+
+type Style = { petals: number; bloom: Bloom }
+
 const C = FLOWER_COLORS
 
 function segDist(px: number, py: number, ax: number, ay: number, bx: number, by: number): number {
@@ -43,23 +122,32 @@ function segDist(px: number, py: number, ax: number, ay: number, bx: number, by:
   return Math.sqrt(x * x + y * y)
 }
 
-/** Five-petal blossom centred at (cx, cy), radius R, rotated by rot radians. */
-function blossom(u: number, v: number, cx: number, cy: number, R: number, rot: number): Pixel {
+/** Blossom centred at (cx, cy), radius R, rotated by rot radians, in the style's petals and colours. */
+function blossom(
+  u: number,
+  v: number,
+  cx: number,
+  cy: number,
+  R: number,
+  rot: number,
+  st: Style
+): Pixel {
+  const B = st.bloom
   const dx = u - cx
   const dy = v - cy
   const r = Math.sqrt(dx * dx + dy * dy) / R
   if (r > 1) return null
   const th = Math.atan2(dy, dx) - rot
-  const lobe = Math.abs(Math.cos(th * 2.5))
+  const lobe = Math.abs(Math.cos((th * st.petals) / 2))
   const edge = 0.38 + 0.62 * Math.pow(lobe, 0.6)
   if (r > edge) return null
   const rel = r / edge
-  if (r < 0.14) return C.center
-  if (r < 0.28) return C.inner
-  if (lobe < 0.3 && rel > 0.25 && rel < 0.8) return C.crease
-  if (rel < 0.55) return C.petalMid
-  if (rel < 0.85) return C.petalOuter
-  return C.petalEdge
+  if (r < 0.14) return B.center
+  if (r < 0.28) return B.inner
+  if (lobe < 0.3 && rel > 0.25 && rel < 0.8) return B.crease
+  if (rel < 0.55) return B.petalMid
+  if (rel < 0.85) return B.petalOuter
+  return B.petalEdge
 }
 
 /** Normalised ellipse distance (≤ 1 inside) or null when outside. */
@@ -119,13 +207,13 @@ const STEMS: ReadonlyArray<readonly [number, number, number, number]> = [
 ]
 
 /** Colour at normalised point (u, v) ∈ [0,1]², drawn front to back. */
-function sample(u: number, v: number, stemHalfWidth: number): Pixel {
-  const a = blossom(u, v, 0.62, 0.28, 0.22, -0.25)
+function sample(u: number, v: number, stemHalfWidth: number, st: Style): Pixel {
+  const a = blossom(u, v, 0.62, 0.28, 0.22, -0.25, st)
   if (a) return a
-  const b = blossom(u, v, 0.3, 0.54, 0.17, 0.45)
+  const b = blossom(u, v, 0.3, 0.54, 0.17, 0.45, st)
   if (b) return b
   const bud = ellipse(u, v, 0.83, 0.56, 0.075, 0.05, -0.25)
-  if (bud !== null) return bud < 0.4 ? C.budInner : C.budOuter
+  if (bud !== null) return bud < 0.4 ? st.bloom.budInner : st.bloom.budOuter
   if (ellipse(u, v, 0.765, 0.57, 0.03, 0.035, 0) !== null) return C.leafShade // sepal
   for (const l of LEAVES) {
     const col = leaf(u, v, l[0], l[1], l[2], l[3], l[4])
@@ -149,10 +237,11 @@ function toGrey(hex: string): string {
 export function flowerPixels(res: number, opts: FlowerOptions = {}): Pixel[] {
   const N = Math.max(6, Math.min(48, Math.round(res)))
   const stemHalfWidth = Math.max(0.018, 0.6 / N) // keeps stems ≥ ~1px at low res
+  const st = FLOWER_STYLES[opts.style ?? DEFAULT_FLOWER_STYLE]
   const out: Pixel[] = []
   for (let j = 0; j < N; j++) {
     for (let i = 0; i < N; i++) {
-      let c = sample((i + 0.5) / N, (j + 0.5) / N, stemHalfWidth)
+      let c = sample((i + 0.5) / N, (j + 0.5) / N, stemHalfWidth, st)
       if (c && opts.paused) c = toGrey(c)
       out.push(c)
     }

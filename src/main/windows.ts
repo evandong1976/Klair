@@ -267,7 +267,7 @@ export function toggleTrayWindow(anchor: Rectangle): void {
   if (!trayWin || trayWin.isDestroyed()) {
     trayWin = new BrowserWindow({
       width: 380,
-      height: 640,
+      height: 750,
       transparent: true,
       backgroundColor: '#00000000',
       frame: false,

@@ -17,7 +17,7 @@ import type { ActiveWindow } from './activewindow'
 const noteSchema = z.object({
   // No hard length limits: the provider doesn't enforce them, and one over-long string
   // would fail the whole note. Lengths are trimmed after the call instead.
-  topic: z.string().describe('Short topic label, e.g. "Gradient descent — learning rate"'),
+  topic: z.string().describe('Short topic label, e.g. "Gradient descent: learning rate"'),
   note: z
     .string()
     .describe(
@@ -37,6 +37,11 @@ const noteSchema = z.object({
     .describe(
       'Three ideas about this screen (the first is a summary), then up to three more that connect it to the session so far, if session context was given'
     ),
+  hasContent: z
+    .boolean()
+    .describe(
+      'Is there an app window, document, page or readable content to help with? False when the screenshot is only a desktop wallpaper or full-screen photo with no window or text, a screensaver, a lock or login screen, or an empty window; true otherwise'
+    ),
   chromePageOnScreen: z
     .boolean()
     .describe(
@@ -53,7 +58,8 @@ Also offer distinct ideas for written help the user could pick (no generic optio
 Start with exactly three grounded in this screen: the first is always a summary of what is on screen; the others explain, clarify or walk through something specific that is visible.
 You may also get a list of what the user's session has covered earlier. If you do, and this screen relates to it, add up to three more ideas that build on the session: how this screen connects to, extends or contradicts something covered earlier, or a question worth asking given both. Name the earlier topic in the idea. Only do this for a real, specific link in subject matter; if this screen is about something else, add none.
 Every idea must be answerable as a short piece of text: no demos, quizzes or interactive content.
-You may also get the full text of the page most recently opened in Chrome. It may or may not be what the screenshot shows. If it is, use it to make the note precise (exact headings and wording, the section in view) and ground the ideas in the whole page. If it isn't, ignore it.`
+You may also get the full text of the page most recently opened in Chrome. It may or may not be what the screenshot shows. If it is, use it to make the note precise (exact headings and wording, the section in view) and ground the ideas in the whole page. If it isn't, ignore it.
+Never use em dashes (—). Use a comma, a colon or a new sentence instead.`
 
 /** Characters of a Chrome page sent with a screenshot; the whole page goes to answers. */
 const PAGE_CHARS_FOR_NOTE = 15_000

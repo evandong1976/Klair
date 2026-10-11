@@ -19,7 +19,7 @@ import type {
 import { createHash, randomUUID } from 'crypto'
 import { cache } from './cache'
 import { captureArea, CaptureLoop, type Frame } from './capture'
-import { belongsInSession, changeJudgeEnabled, meaningfulChange, thumbnail } from './judge'
+import { belongsInSession, changeJudgeEnabled, judgeScreen, thumbnail } from './judge'
 import { config } from './config'
 import { ControllerCore, type Effect } from './controller-core'
 import * as db from './db'
@@ -96,6 +96,12 @@ function notice(n: Notice | null): void {
   setState({ notice: n })
 }
 
+/** Nothing on screen to help with: grey flower, no nudge, no new ideas (see judge.ts). */
+function setIdle(idle: boolean): void {
+  if (getState().idle === idle) return
+  setState(idle ? { idle, nudge: false } : { idle })
+}
+
 /** A notice that clears itself, e.g. "Now in ML study" after switching sessions. */
 function flash(n: Notice, ms = 2500): void {
   notice(n)
@@ -121,7 +127,7 @@ function apply(effects: Effect[]): void {
         void doSuggest(e.generationId, e.captureId)
         break
       case 'publishSuggestions':
-        setState({ suggestions: e.set, nudge: getState().panel === 'closed' })
+        setState({ suggestions: e.set, nudge: getState().panel === 'closed' && !getState().idle })
         if (sessionId) {
           const sid = sessionId
           store
@@ -203,6 +209,7 @@ async function enterSession(s: { id: number; name: string; startedAt: string }):
     lastAnswerTitle: null,
     nudge: false,
     selection: null,
+    idle: false,
     downloads: [],
     stats: await store.sessionStats(s.id).catch(() => ({ captures: 0, answers: 0, tabs: 0 }))
   })
@@ -266,7 +273,10 @@ function beginObserving(): void {
   lastChangeAt = Date.now()
   if (!loop) loop = new CaptureLoop(config.captureMs, onFrame, onCaptureError)
   loop.start()
-  tickTimer ??= setInterval(() => apply(core.tick()), 1000)
+  // No dwell nudges while there is nothing on screen to help with.
+  tickTimer ??= setInterval(() => {
+    if (!getState().idle) apply(core.tick())
+  }, 1000)
   flushTimer ??= setInterval(() => void flushActivity(), 10_000)
   statsTimer ??= setInterval(() => void refreshStats(), 15_000)
   startDownloads()
@@ -316,6 +326,7 @@ export async function endSession(): Promise<void> {
     observing: 'off',
     suggestions: null,
     nudge: false,
+    idle: false,
     answer: null,
     panel: 'closed',
     selection: null,
@@ -475,15 +486,31 @@ async function onFrame(frame: Frame): Promise<void> {
   activity.push(row)
   if (!frame.changed) return
 
-  // The pixel diff says the screen changed. Ask whether it is really different content
-  // before re-noting it and replacing the ideas; if not, this was just more of the same.
+  // The pixel diff says the screen changed. Before re-noting it and replacing the ideas,
+  // ask whether there is anything on it to help with, and whether it is really different
+  // content. A bare desktop gets no note and no ideas; more of the same gets no new ones.
   const thumb = changeJudgeEnabled ? thumbnail(frame.png) : null
-  if (thumb && notedThumb && !(await meaningfulChange(notedThumb, thumb, sid))) {
-    row.changed = false
-    row.dwellMs = now - lastChangeAt
-    return
+  // The note is started alongside the judgement, not after it, so a real change doesn't
+  // wait for both in turn. If the judgement says to skip this frame, the note is dropped.
+  const started = await startNote(sid, frame)
+  if (thumb) {
+    const verdict = await judgeScreen(notedThumb, thumb, sid)
+    // "Nothing useful here" greys the flower and stops ideas, so it takes two votes: the
+    // judge's, and the note model's once its note is in.
+    const useful =
+      verdict.useful ||
+      (await started.note.then(
+        (n) => n.hasContent !== false,
+        () => true
+      ))
+    if (sid !== sessionId) return // the session ended or switched while that was decided
+    setIdle(!useful)
+    if (!useful || (notedThumb && !verdict.changed)) {
+      row.changed = false
+      row.dwellMs = now - lastChangeAt
+      return
+    }
   }
-  if (sid !== sessionId) return // the session ended or switched while that was decided
   notedThumb = thumb
   lastChangeAt = now
 
@@ -510,7 +537,7 @@ async function onFrame(frame: Frame): Promise<void> {
   }
   captures.set(id, mem)
   if (captures.size > 40) captures.delete(captures.keys().next().value as number)
-  notePromises.set(id, noteFor(sid, mem, frame))
+  notePromises.set(id, noteFor(sid, mem, frame, started))
   apply(core.onCapture(id, true))
 }
 
@@ -535,14 +562,37 @@ async function sessionContext(sid: number): Promise<string> {
   return `Session "${name}". Covered earlier, most recent first:\n${lines.join('\n')}`
 }
 
-async function noteFor(sid: number, mem: CaptureMem, frame: Frame): Promise<VisionNote | null> {
+/** A note being written for a frame that may or may not end up being kept. */
+interface StartedNote {
+  page: (PageContext & { id: number; at: number }) | null
+  soFar: string
+  note: Promise<VisionNote>
+}
+
+async function startNote(sid: number, frame: Frame, selection = false): Promise<StartedNote> {
+  const page = livePage && Date.now() - livePage.at < LIVE_PAGE_MS ? livePage : null
+  const soFar = await sessionContext(sid)
+  const note = makeVisionNote(frame.png, frame.hash, frame.meta, sid, page, {
+    selection,
+    sessionContext: soFar
+  })
+  note.catch(() => {}) // a dropped note must not surface as an unhandled rejection
+  return { page, soFar, note }
+}
+
+async function noteFor(
+  sid: number,
+  mem: CaptureMem,
+  frame: Frame,
+  started?: StartedNote
+): Promise<VisionNote | null> {
   try {
-    const page = livePage && Date.now() - livePage.at < LIVE_PAGE_MS ? livePage : null
-    const soFar = await sessionContext(sid)
-    const note = await makeVisionNote(frame.png, frame.hash, frame.meta, sid, page, {
-      selection: mem.source === 'selection',
-      sessionContext: soFar
-    })
+    const {
+      page,
+      soFar,
+      note: pending
+    } = started ?? (await startNote(sid, frame, mem.source === 'selection'))
+    const note = await pending
     mem.note = note
     currentTopic = note.topic
     if (page && note.chromePageOnScreen) {
@@ -635,7 +685,7 @@ export function cancelSelection(): void {
 function showPanelAgain(): void {
   const view = getState().panel === 'closed' ? 'ideas' : getState().panel
   core.setPanelOpen(true)
-  apply(core.requestNow())
+  if (!getState().idle || getState().selection) apply(core.requestNow())
   setState({ panel: view, nudge: false })
   windows.showPanel()
 }
@@ -694,6 +744,7 @@ export async function finishSelection(rect: SelectionRect): Promise<void> {
     panel: 'ideas'
   })
   core.setPanelOpen(true)
+  setIdle(false) // the user picked something to work with
   apply(core.pin(id))
   windows.showPanel()
 }
@@ -969,7 +1020,7 @@ export function openPanel(): void {
       ? 'answer'
       : 'ideas'
   // Fresh ideas for the current screen, unless the shown ones are already for it.
-  apply(core.requestNow())
+  if (!getState().idle || getState().selection) apply(core.requestNow())
   setState({ panel: view, nudge: false })
   windows.showPanel()
 }
@@ -992,7 +1043,7 @@ export function showShortcuts(): void {
 
 export function backToIdeas(): void {
   setState({ panel: 'ideas' })
-  apply(core.requestNow())
+  if (!getState().idle || getState().selection) apply(core.requestNow())
 }
 
 export function pickKey(key: number): void {
@@ -1347,9 +1398,11 @@ export async function sessionDetail(id: number): Promise<SessionDetail | null> {
     session,
     timeline,
     holding: {
-      onScreen: live ? (lastMeta.windowTitle ?? currentTopic ?? '—') : (lastSeen?.title ?? '—'),
-      topic: live ? (currentTopic ?? '—') : (byTopic.rows[0]?.topic ?? '—'),
-      related: timeline.filter((t) => t.kind === 'switched').slice(-1)[0]?.title ?? '—'
+      onScreen: live
+        ? (lastMeta.windowTitle ?? currentTopic ?? 'Nothing yet')
+        : (lastSeen?.title ?? 'Nothing yet'),
+      topic: live ? (currentTopic ?? 'Nothing yet') : (byTopic.rows[0]?.topic ?? 'Nothing yet'),
+      related: timeline.filter((t) => t.kind === 'switched').slice(-1)[0]?.title ?? 'Nothing yet'
     },
     privacy: { sentToClaude: sent, retentionDays: config.retentionDays },
     insights: {

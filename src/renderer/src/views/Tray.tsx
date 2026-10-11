@@ -4,6 +4,7 @@ import { MagicCard } from '../components/magicui/magic-card'
 import { Button, Key, PixelLabel } from '../components/ui'
 import { isMod, klair, minutes, timeLabel, useKlairState } from '../lib/useKlair'
 import { accelFromEvent, prettyAccel } from '../../../shared/keys'
+import { FLOWER_STYLES, type FlowerStyleId } from '../../../shared/flower'
 
 // Menu bar popover (Tray.dc.html).
 const DWELL = [
@@ -191,6 +192,39 @@ export function TrayWindow(): React.JSX.Element | null {
             onChange={(e) => void klair.setQuiet(e.target.checked)}
             className="w-10 h-6 m-0 accent-rose"
           />
+        </div>
+      </div>
+
+      <div className="px-[18px] pb-3.5 flex flex-col gap-2.5">
+        <PixelLabel>Appearance</PixelLabel>
+        <span id="flower-style" className="text-[14px] font-semibold">
+          Flower
+        </span>
+        <div
+          role="radiogroup"
+          aria-labelledby="flower-style"
+          className="grid grid-cols-5 gap-1 p-1 rounded-[12px] bg-white/55"
+        >
+          {(Object.keys(FLOWER_STYLES) as FlowerStyleId[]).map((id) => {
+            const on = s.flowerStyle === id
+            return (
+              <button
+                key={id}
+                role="radio"
+                aria-checked={on}
+                type="button"
+                onClick={() => void klair.setFlowerStyle(id)}
+                className={`py-2 rounded-[9px] border-0 text-[11.5px] flex flex-col items-center gap-1 cursor-pointer ${
+                  on
+                    ? 'bg-white shadow-[0_1px_3px_rgba(110,70,65,0.14)] font-bold text-ink'
+                    : 'bg-transparent font-semibold text-ink-2'
+                }`}
+              >
+                <Flower res={16} cell={2} style={id} label="" />
+                {FLOWER_STYLES[id].label}
+              </button>
+            )
+          })}
         </div>
       </div>
 

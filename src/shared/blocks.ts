@@ -23,7 +23,7 @@ export const ideaSchema = z.object({
 
 export const suggestionOutputSchema = z.object({
   topic: z.string().max(80).describe('Likely topic of the visible work'),
-  whereTitle: z.string().max(90).describe('e.g. "Gradient descent — Learning rate"'),
+  whereTitle: z.string().max(90).describe('e.g. "Gradient descent: learning rate"'),
   whereRead: z
     .string()
     .max(240)
