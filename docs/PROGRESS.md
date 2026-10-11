@@ -1,44 +1,52 @@
 # Klair build progress
 
-## Handoff (updated 2026-10-10 18:55 ET, by Mac session · claude-opus-5-5)
-- **Milestone:** 8 (prove it) in progress on the Mac.
-- **Just finished:** SQLite-first sessions. A running session writes only to SQLite on the Mac (`src/main/local.ts`, `userData/klair.db`, FTS5 search). When it ends, `src/main/upload.ts` copies it to TigerData in one transaction and the local session records its TigerData id (`remote_id`). Failed uploads retry on start, hourly and on Check again; abandoned sessions are ended and uploaded on start. TigerData is no longer needed to start a session. Unit tests cover the store; the upload was tested against a throwaway local Postgres 17 (rows, id remapping, replace-on-retry, search, delete, offline failure and queued deletes).
+## Handoff (updated 2026-10-10 21:40 ET, by Mac session · claude-opus-5-5)
+- **Milestone:** 8 (prove it) in progress on the Mac. Features beyond the brief were added at the user's request: SQLite-first sessions with upload to TigerData, the Chrome extension, select an area (⌘S) and adding downloads.
+- **Just finished:** adding downloads (`feature/download-pdf`, not merged to `main` yet) and a docs refresh (`fix/md-update`, built on it): README rewritten to match the code, CLAUDE.md, TIGERDATA.md, extension README and `.env.example` updated, PLAN.md marked historical.
+- **Branches:** `main` (pushed) has everything through select an area. `feature/download-pdf` adds downloads; `fix/md-update` adds the docs on top of it.
 - **In progress:** nothing half-done
-- **Next step:** run a real session with TigerData reachable, end it, and check the Sessions window says "also in TigerData" and the console prints `tigerdata: uploaded session …`. Then "resume a session" (pull back from TigerData by `remote_id`), which the user deferred.
-- **Broken / failing:** TigerData's port 31846 is blocked from some networks (see 2026-10-10 notes); sessions now just wait locally and upload later.
+- **Next step:** merge `feature/download-pdf` (and these docs) into `main`; then walk "Verify on the Mac" below. After that, the deferred "resume a session" (pull it back from TigerData by `remote_id`).
+- **Broken / failing:** nothing known. TigerData's port 31846 is blocked on some networks; sessions then wait on the Mac and upload later.
 - **Decisions made this session:** see the Decisions log
 - **Blocked on / questions for the user:** none
-- **How to verify current state:** `pnpm install && pnpm typecheck && pnpm lint && pnpm test && pnpm build`
+- **How to verify current state:** `pnpm install && pnpm typecheck && pnpm lint && pnpm test && pnpm build`, then `pnpm dev`
 
 ---
 
 ## Milestones
 - [x] 1. Connections: health, schema, IPC, windows, shortcuts, rename and packaging
-- [x] 2. Panel + keys (renderer; visual check on the Mac pending)
-- [x] 3. Capture → persist → notes (main process; verify on the Mac)
+- [x] 2. Panel + keys
+- [x] 3. Capture → persist → notes (seen working in real sessions)
 - [x] 4. Controller (core unit-tested)
-- [x] 5. Retrieval: Graphify + TigerData search (verify on the Mac)
-- [x] 6. AI: suggestions + execution (verify on the Mac)
-- [x] 7. The rest: Tray / Sessions + insights / Start / States, rename/packaging, fn addon source (unbuilt)
-- [ ] 8. Prove it: demo run, acceptance criteria, token measurements (needs the Mac)
+- [x] 5. Retrieval: Graphify + local and TigerData search
+- [x] 6. AI: suggestions + execution
+- [x] 7. The rest: Tray / Sessions + insights / Start / States, rename/packaging, fn addon
+- [ ] 8. Prove it: demo run, acceptance criteria, token measurements
 
-## Verify on the Mac (can't be tested from the Linux build workspace)
-- ~~`pnpm build:native` compiles `native/fn-key`~~ (compiles cleanly, 2026-10-10); still to check: fn tap opens Klair, fn+P / fn+Q work
-- `pnpm dev` launches; flower window top-right; ⌃⌥K opens the panel
-- Health: OpenRouter slugs `anthropic/claude-haiku-5.5` / `anthropic/claude-sonnet-5.5` accept images; TigerData migrate output (`tigerdata: … unavailable` lines in the console show which optional features failed)
-- Screen Recording prompt and capture; `setContentProtection` hides Klair windows from captures
-- `graphify extract` against OpenRouter; `graphify query` returns text
-- Panel focus and return-focus-on-close (`app.hide()` + `flower.showInactive()`); vibrancy look
+## Seen working on the Mac (2026-10-10)
+- `pnpm dev` and the packaged `Klair.app` launch; Screen Recording allowed; real sessions captured screenshots and wrote notes (Gemini via OpenRouter).
+- fn addon compiles and loads (health `fnkey=ok` once Input Monitoring was granted).
+- Ideas follow the screen while the panel is open (user confirmed).
+- Chrome extension connected to a session; a page was stored and linked to a screenshot.
+- TigerData connection works on a network that allows port 31846.
+
+## Verify on the Mac (not confirmed yet)
+- fn tap opens Klair; fn P / fn Q
+- A session ending and uploading to TigerData (console `tigerdata: uploaded session …`; Sessions window "also in TigerData")
+- Select an area: the saved crop matches the dragged rectangle (multi-display and Retina)
+- Adding a real browser download end to end, and the Downloads folder permission prompt
+- `graphify extract` / `graphify query` on a real session
+- The demo script in README.md, and token measurements (`KLAIR_BASELINE=full`)
 
 ## Health checks
-- 2026-10-10, packaged app: screen=ok, openrouter=ok, graphify=ok, cache=ok, fnkey=warn (Input Monitoring not yet granted), tigerdata=fail (port 31846 blocked by the network)
+- 2026-10-10, packaged app: screen=ok, fnkey=ok, local=ok, openrouter=ok, graphify=ok, cache=ok, browser=ok once the extension checked in; tigerdata=ok on an open network (fail on networks that block port 31846).
 
 ## Stubs and simulations
-- fn key: `native/fn-key/src/fn_key.c` compiles and loads; the event tap itself is unverified until Input Monitoring is granted. ⌃⌥K / ⌃⌥P / ⌃⌥Q work as fallbacks.
-- The headless preview in the build workspace used mock data. No real model, database or capture has run yet.
+- Answers are text only; the code, slider-plot and quiz blocks in `src/shared/blocks.ts` are parked (see `execute.ts`).
+- "Resume a session" (pull it back from TigerData) is not built; local sessions record `remote_id` for it.
 
 ## Decisions log
-- 2026-10-10: TigerData replaces SQLite for canonical records; screenshots stay local.
+- 2026-10-10: (superseded by SQLite-first sessions, below) TigerData replaces SQLite for canonical records; screenshots stay local.
 - 2026-10-10: `.env.local` is loaded before `.env` (the team's keys are in `.env.local`).
 - 2026-10-10: the panel handles ⌘ keys itself while focused; there are no global ⌘ registrations.
 - 2026-10-10: privacy copy deviates from BUILD_PROMPT §2: each new screen is sent to Claude for a vision note, so the copy says so instead of "only the relevant ones".

@@ -6,7 +6,9 @@ Every feature below is created by `migrate()` in `src/main/db.ts`, one step at a
 
 ## 1. Session records, uploaded when a session ends
 
-`sessions`, `captures`, `suggestion_sets`, `actions` and `notes` hold every session, screenshot reference, idea set, picked action and result, with provenance. Screenshot image files stay on the Mac; rows store their path.
+`sessions`, `captures`, `suggestion_sets`, `actions` and `notes` hold every session, screenshot reference, idea set, picked action and result, with provenance. `pages` holds the full text of Chrome pages the extension sent, and `files` the extracted text of files the user added from Downloads. Screenshot images and added files stay on the Mac; rows store their path.
+
+Columns added for the newer features (all additive): `captures.source` (`'auto'` or `'selection'`, an area the user selected), `captures.page_id` (the Chrome page a screenshot shows), `notes.file_id` (the added file a note is about), and `local_id` on every uploaded table.
 
 **While a session runs** these rows (and `screen_activity`) are written to the same tables in SQLite on the Mac. Save order there: PNG file → `captures` row (`status = 'pending'`) → `committed`. Only committed captures get notes and are indexed. On startup `reconcileLocal()` deletes orphan files and resolves half-written rows.
 
