@@ -4,6 +4,7 @@ import { readdir, readFile, rm, unlink, writeFile } from 'fs/promises'
 import { join } from 'path'
 import type { AnswerOutput } from '../shared/blocks'
 import type {
+  SelectionRect,
   Provenance,
   AnswerState,
   InsightRow,
@@ -16,7 +17,7 @@ import type {
 } from '../shared/types'
 import { createHash } from 'crypto'
 import { cache } from './cache'
-import { CaptureLoop, type Frame } from './capture'
+import { captureArea, CaptureLoop, type Frame } from './capture'
 import { config } from './config'
 import { ControllerCore, type Effect } from './controller-core'
 import * as db from './db'
@@ -49,6 +50,7 @@ interface CaptureMem {
   note: VisionNote | null
   /** The Chrome page this screenshot shows, when the note model matched them. */
   pageId: number | null
+  source: store.CaptureSource
 }
 
 let sessionId: number | null = null
@@ -167,6 +169,7 @@ export async function startSession(name: string): Promise<void> {
     captures.clear()
     notePromises.clear()
     livePage = null
+    core.unpin() // a selection from an earlier session isn't this session's context
     setState({
       session: {
         id: s.id,
@@ -180,7 +183,8 @@ export async function startSession(name: string): Promise<void> {
       suggestions: null,
       answer: null,
       nudge: false,
-      stats: { captures: 0, answers: 0, tabs: 0 }
+      stats: { captures: 0, answers: 0, tabs: 0 },
+      selection: null
     })
     windows.closeStart()
     beginObserving()
@@ -234,13 +238,15 @@ export async function endSession(): Promise<void> {
   cancelExecution()
   sessionId = null
   livePage = null
+  core.unpin()
   setState({
     session: null,
     observing: 'off',
     suggestions: null,
     nudge: false,
     answer: null,
-    panel: 'closed'
+    panel: 'closed',
+    selection: null
   })
   windows.hidePanel()
   await store.setSessionStatus(id, 'ended').catch(() => {})
@@ -414,7 +420,8 @@ async function onFrame(frame: Frame): Promise<void> {
     path,
     capturedAt: frame.at.toISOString(),
     note: null,
-    pageId: null
+    pageId: null,
+    source: 'auto'
   }
   captures.set(id, mem)
   if (captures.size > 40) captures.delete(captures.keys().next().value as number)
@@ -425,7 +432,9 @@ async function onFrame(frame: Frame): Promise<void> {
 async function noteFor(sid: number, mem: CaptureMem, frame: Frame): Promise<VisionNote | null> {
   try {
     const page = livePage && Date.now() - livePage.at < LIVE_PAGE_MS ? livePage : null
-    const note = await makeVisionNote(frame.png, frame.hash, frame.meta, sid, page)
+    const note = await makeVisionNote(frame.png, frame.hash, frame.meta, sid, page, {
+      selection: mem.source === 'selection'
+    })
     mem.note = note
     currentTopic = note.topic
     if (page && note.chromePageOnScreen) {
@@ -461,6 +470,102 @@ async function noteFor(sid: number, mem: CaptureMem, frame: Frame): Promise<Visi
     console.warn('vision note failed:', (err as Error).message)
     return null
   }
+}
+
+// ------------------------------------------------------------------ selected area
+
+// The panel's "Select an area" (⌘S): the panel steps aside, an overlay lets the user
+// drag out a rectangle, and that area is captured at full resolution, saved like any
+// capture (source 'selection') and pinned as the context for ideas and answers until
+// it's cleared or replaced.
+
+export function startSelection(): void {
+  if (!sessionId || getState().selecting) return
+  setState({ selecting: true })
+  windows.stepAsidePanel()
+  windows.showSelectionOverlay()
+}
+
+export function cancelSelection(): void {
+  if (!getState().selecting) return
+  windows.hideSelectionOverlay()
+  setState({ selecting: false })
+  showPanelAgain()
+}
+
+function showPanelAgain(): void {
+  const view = getState().panel === 'closed' ? 'ideas' : getState().panel
+  core.setPanelOpen(true)
+  apply(core.requestNow())
+  setState({ panel: view, nudge: false })
+  windows.setPanelView(view)
+  windows.showPanel()
+}
+
+export async function finishSelection(rect: SelectionRect): Promise<void> {
+  const sid = sessionId
+  if (!getState().selecting) return
+  const overlay = windows.hideSelectionOverlay()
+  setState({ selecting: false })
+  if (!sid || !overlay || rect.width < 8 || rect.height < 8) return showPanelAgain()
+  // Let the overlay leave the screen first (it's excluded from capture anyway).
+  await new Promise((r) => setTimeout(r, 120))
+  let png: Buffer
+  try {
+    png = await captureArea(overlay.display, {
+      ...rect,
+      x: rect.x + overlay.offset.x,
+      y: rect.y + overlay.offset.y
+    })
+  } catch (err) {
+    notice({ kind: 'request-failed', detail: (err as Error).message })
+    return showPanelAgain()
+  }
+  const at = new Date()
+  const hash = createHash('sha1').update(png).digest('hex')
+  const path = join(shotsDir(sid), `${at.getTime()}-selection-${hash.slice(0, 10)}.png`)
+  let id: number
+  try {
+    await writeFile(path, png)
+    id = await store.insertPendingCapture(sid, path, { ...lastMeta, imageHash: hash }, 'selection')
+    await store.setCaptureStatus(id, 'committed')
+  } catch (err) {
+    await unlink(path).catch(() => {})
+    persistenceFailed(err)
+    return
+  }
+  const mem: CaptureMem = {
+    id,
+    path,
+    capturedAt: at.toISOString(),
+    note: null,
+    pageId: null,
+    source: 'selection'
+  }
+  captures.set(id, mem)
+  notePromises.set(id, noteFor(sid, mem, { at, png, hash, changed: true, meta: lastMeta }))
+  void refreshStats()
+  setState({
+    selection: {
+      captureId: id,
+      at: mem.capturedAt,
+      width: Math.round(rect.width),
+      height: Math.round(rect.height)
+    },
+    answer: null,
+    panel: 'ideas'
+  })
+  core.setPanelOpen(true)
+  apply(core.pin(id))
+  windows.setPanelView('ideas')
+  windows.showPanel()
+}
+
+/** Unpin the selection: ideas and answers follow the screen again. */
+export function clearSelection(): void {
+  if (!getState().selection) return
+  setState({ selection: null })
+  apply(core.unpin())
 }
 
 // ------------------------------------------------------------------ Chrome pages
@@ -555,7 +660,8 @@ async function doSuggest(generationId: number, captureId: number): Promise<void>
       generationId,
       note,
       capturedAt: mem.capturedAt,
-      pageTitle: page?.title ?? null
+      pageTitle: page?.title ?? null,
+      selection: mem.source === 'selection'
     })
     apply(core.onSuggestions(generationId, set))
   } catch (err) {
@@ -641,17 +747,21 @@ async function captureImage(captureId: number | null): Promise<{
   note: string
   topic: string
   page: PageContext | null
+  selection: boolean
 }> {
-  if (captureId === null) return { png: null, note: '', topic: currentTopic ?? '', page: null }
+  if (captureId === null)
+    return { png: null, note: '', topic: currentTopic ?? '', page: null, selection: false }
   const note = await (notePromises.get(captureId) ?? Promise.resolve(null))
   const mem = captures.get(captureId)
   let path = mem?.path
   let pageId = mem?.pageId ?? null
+  let selection = mem?.source === 'selection'
   let noteText = note?.note ?? ''
   if (!mem) {
     const row = await store.getCapture(captureId).catch(() => null)
     path = row?.path
     pageId = row?.pageId ?? null
+    selection = row?.source === 'selection'
     noteText ||= row?.note ?? ''
   }
   const png = path && existsSync(path) ? await readFile(path) : null
@@ -660,7 +770,8 @@ async function captureImage(captureId: number | null): Promise<{
     png,
     note: noteText,
     topic: note?.topic ?? currentTopic ?? '',
-    page: page ? { title: page.title, url: page.url, body: page.body } : null
+    page: page ? { title: page.title, url: page.url, body: page.body } : null,
+    selection
   }
 }
 
@@ -734,6 +845,13 @@ async function execute(run: {
         }
     if (!live()) return
     const screenSources = run.set?.sources.filter((s) => s.kind === 'screen') ?? []
+    if (img.selection && !screenSources.length) {
+      screenSources.push({
+        kind: 'screen',
+        label: 'Your selection',
+        captureId: run.captureId ?? undefined
+      })
+    }
     if (img.page && !screenSources.some((s) => s.label.startsWith(PAGE_SOURCE))) {
       screenSources.push(pageSource(img.page.title, run.captureId))
     }
@@ -754,8 +872,10 @@ async function execute(run: {
       kind: run.kind,
       title: base.title,
       // The note already describes the screen; attaching the image as well delays the
-      // first word by several seconds, so it is only sent when there is no note.
-      png: img.note ? null : img.png,
+      // first word by several seconds, so it is only sent when there is no note, or when
+      // the user selected the area themselves (they want what's in it looked at).
+      png: img.selection || !img.note ? img.png : null,
+      selection: img.selection,
       note: img.note,
       topic: img.topic,
       page: img.page,

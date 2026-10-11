@@ -1,5 +1,6 @@
 import { createHash } from 'crypto'
-import { desktopCapturer, screen, type NativeImage } from 'electron'
+import { desktopCapturer, screen, type Display, type NativeImage } from 'electron'
+import type { SelectionRect } from '../shared/types'
 import { activeWindow, type ActiveWindow } from './activewindow'
 
 // Periodic screen capture with cheap local change detection. The screen is checked
@@ -113,4 +114,31 @@ export class CaptureLoop {
       this.busy = false
     }
   }
+}
+
+/**
+ * One area of a display at full (Retina) resolution, as PNG. `rect` is in the
+ * display's points, relative to its top-left corner (the selection overlay's CSS px).
+ */
+export async function captureArea(display: Display, rect: SelectionRect): Promise<Buffer> {
+  const sf = display.scaleFactor
+  const sources = await desktopCapturer.getSources({
+    types: ['screen'],
+    thumbnailSize: {
+      width: Math.round(display.size.width * sf),
+      height: Math.round(display.size.height * sf)
+    }
+  })
+  const src = sources.find((s) => s.display_id === String(display.id)) ?? sources[0]
+  if (!src || src.thumbnail.isEmpty()) throw new Error('Screen capture returned nothing')
+  const img = src.thumbnail
+  const size = img.getSize()
+  // Pixels per point actually delivered (the thumbnail may come back smaller than asked).
+  const k = size.width / display.size.width
+  const x = Math.max(0, Math.round(rect.x * k))
+  const y = Math.max(0, Math.round(rect.y * k))
+  const width = Math.min(size.width - x, Math.round(rect.width * k))
+  const height = Math.min(size.height - y, Math.round(rect.height * k))
+  if (width < 1 || height < 1) throw new Error('The selected area is off screen')
+  return img.crop({ x, y, width, height }).toPNG()
 }

@@ -5,6 +5,7 @@ import { createRoot } from 'react-dom/client'
 import { MotionConfig } from 'motion/react'
 import { FlowerWindow } from './views/FlowerWindow'
 import { PanelWindow } from './views/Panel'
+import { SelectWindow } from './views/Select'
 import { SessionsWindow } from './views/Sessions'
 import { StartWindow } from './views/Start'
 import { TrayWindow } from './views/Tray'
@@ -13,6 +14,7 @@ import { TrayWindow } from './views/Tray'
 const routes: Record<string, () => React.JSX.Element | null> = {
   flower: FlowerWindow,
   panel: PanelWindow,
+  select: SelectWindow,
   start: StartWindow,
   sessions: SessionsWindow,
   tray: TrayWindow

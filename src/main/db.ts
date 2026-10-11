@@ -143,6 +143,8 @@ create table if not exists pages (
 );
 create index if not exists pages_session_idx on pages (session_id, captured_at);
 alter table captures add column if not exists page_id bigint references pages(id) on delete set null;
+-- 'auto' (capture loop) or 'selection' (an area the user selected).
+alter table captures add column if not exists source text not null default 'auto';
 `
 
 async function tryStep(client: PoolClient, label: string, sql: string): Promise<boolean> {

@@ -17,6 +17,7 @@ const GROUPS: { title: string; rows: [string, string][] }[] = [
     rows: [
       ['Pick an idea', '⌘1 ⌘2 ⌘3'],
       ['Ask anything', '⌘K'],
+      ['Select an area of the screen', '⌘S'],
       ['Move between ideas', '⌘↑ ⌘↓'],
       ['Close', 'esc']
     ]

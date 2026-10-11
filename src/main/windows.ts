@@ -154,6 +154,70 @@ export function hidePanel(): void {
   }
 }
 
+/** Hide the panel without handing focus back to the previous app (a Klair window follows). */
+export function stepAsidePanel(): void {
+  panel?.hide()
+}
+
+// The selection overlay: a transparent window over one whole display (menu bar
+// included) where the user drags out an area. Excluded from capture like every
+// Klair window, and its CSS pixels are the display's points.
+let selectWin: BrowserWindow | null = null
+let selectDisplay: Electron.Display | null = null
+
+export function showSelectionOverlay(): Electron.Display {
+  const display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint())
+  selectDisplay = display
+  if (!selectWin || selectWin.isDestroyed()) {
+    selectWin = new BrowserWindow({
+      ...display.bounds,
+      transparent: true,
+      backgroundColor: '#00000000',
+      frame: false,
+      resizable: false,
+      movable: false,
+      fullscreenable: false,
+      skipTaskbar: true,
+      hasShadow: false,
+      enableLargerThanScreen: true,
+      show: false,
+      webPreferences: webPreferences()
+    })
+    floatEverywhere(selectWin, 'screen-saver')
+    load(selectWin, 'select')
+    selectWin.once('ready-to-show', () => revealSelection())
+  } else {
+    revealSelection()
+  }
+  return display
+}
+
+function revealSelection(): void {
+  if (!selectWin || !selectDisplay) return
+  selectWin.setBounds(selectDisplay.bounds)
+  selectWin.show()
+  selectWin.focus()
+  if (isMac) app.focus({ steal: true })
+}
+
+/**
+ * Hide the overlay. Returns its display and where the overlay actually sat on it (in
+ * points), in case macOS nudged it (e.g. below the menu bar), so a selection made in
+ * overlay coordinates can be mapped back onto the display exactly.
+ */
+export function hideSelectionOverlay(): {
+  display: Electron.Display
+  offset: { x: number; y: number }
+} | null {
+  if (!selectWin || selectWin.isDestroyed() || !selectDisplay) return null
+  const b = selectWin.getBounds()
+  selectWin.hide()
+  return {
+    display: selectDisplay,
+    offset: { x: b.x - selectDisplay.bounds.x, y: b.y - selectDisplay.bounds.y }
+  }
+}
+
 export function panelVisible(): boolean {
   return !!panel?.isVisible()
 }

@@ -149,3 +149,26 @@ test('requestNow ignores dwell but not in-flight requests', () => {
   assert.equal(fx[0].type, 'requestSuggestions')
   assert.deepEqual(core.requestNow(), [])
 })
+
+test('a pinned selection stays the context until it is cleared', () => {
+  const { core, clock } = setup()
+  shown(core, clock, 'a', 1)
+  core.setPanelOpen(true)
+  const pinned = core.pin(10)
+  assert.deepEqual(
+    pinned.map((e) => e.type),
+    ['invalidateSuggestions', 'requestSuggestions']
+  )
+  assert.equal(pinned[1].type === 'requestSuggestions' && pinned[1].captureId, 10)
+  // Automatic captures keep coming but don't replace the selection.
+  assert.deepEqual(core.onCapture(11, true), [])
+  assert.deepEqual(core.onCapture(12, true), [])
+  assert.equal(core.currentCaptureId, 10)
+  // Clearing it returns to the latest automatic capture.
+  const back = core.unpin()
+  assert.equal(core.currentCaptureId, 12)
+  const last = back.at(-1)
+  assert.equal(last?.type === 'requestSuggestions' ? last.captureId : null, 12)
+  assert.equal(core.pinnedCaptureId, null)
+  assert.deepEqual(core.unpin(), [])
+})

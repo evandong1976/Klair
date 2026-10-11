@@ -108,3 +108,21 @@ test('Chrome pages are stored once, linked to captures and exported', async () =
   assert.equal(data?.captures.find((c) => c.id === cap)?.page_id, pid)
   assert.ok((await local.timeline(id)).some((t) => t.title.includes('Learning rate')))
 })
+
+test('selected areas are stored as selection captures', async () => {
+  const id = await sessionWithNotes('eta')
+  const cap = await local.insertPendingCapture(
+    id,
+    '/tmp/eta-sel.png',
+    { imageHash: 'sel' },
+    'selection'
+  )
+  await local.setCaptureStatus(cap, 'committed')
+  await local.setCaptureNote(cap, 'A loss curve against learning rate', '/tmp/n.md')
+  assert.equal((await local.getCapture(cap))?.source, 'selection')
+  const t = await local.timeline(id)
+  assert.ok(t.some((i) => i.title === 'You selected an area of the screen'))
+  // Selections don't merge into the "Read …" rows of automatic captures.
+  assert.equal(t.filter((i) => i.title.startsWith('Read')).length, 1)
+  assert.equal(local.exportSession(id)?.captures.find((c) => c.id === cap)?.source, 'selection')
+})

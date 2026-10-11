@@ -30,6 +30,8 @@ export interface ExecuteInput {
   kind: string
   title: string
   png: Buffer | null
+  /** The context is an area the user selected: the image always goes with the request. */
+  selection?: boolean
   note: string
   topic: string
   /** Full text of the Chrome page on screen (Chrome extension), when known. */
@@ -56,6 +58,9 @@ export async function runAssistance(input: ExecuteInput): Promise<ExecuteResult>
   const text = [
     `Task (picked by the user, kind: ${input.kind}):\n${input.task}`,
     fenceUntrusted('current-screen', `Topic: ${input.topic}\n${input.note}`),
+    input.selection && input.png
+      ? 'The attached image is an area of the screen the user selected on purpose: answer about what is in it.'
+      : '',
     input.page
       ? fenceUntrusted(
           'chrome-page',

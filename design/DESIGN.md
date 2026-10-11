@@ -157,6 +157,7 @@ Keyboard-first: every action shows its shortcut on the control itself, and the o
 | Klair open | `⌘1` `⌘2` `⌘3` | Pick an idea |
 | Klair open | `⌘↑` `⌘↓` | Move between ideas |
 | Klair open | `⌘K` | Focus "Ask for something else" |
+| Klair open | `⌘S` | Select an area: drag out a rectangle (esc cancels); it's captured and pinned as the context until "Use whole screen" |
 | Klair open | `⌘/` | Shortcut sheet |
 | Klair open | `esc` | Close |
 | Answer | `⌘[` | Back to ideas |

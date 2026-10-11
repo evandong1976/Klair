@@ -105,6 +105,20 @@ export interface KlairState {
   lastAnswerTitle: string | null
   retentionDays: number
   stats: { captures: number; answers: number; tabs: number }
+  /**
+   * An area of the screen the user selected (⌘S in the panel), pinned as the context
+   * for ideas and answers until cleared. `selecting` while the overlay is up.
+   */
+  selection: { captureId: number; at: string; width: number; height: number } | null
+  selecting: boolean
+}
+
+/** A rectangle in the selection overlay, in its CSS pixels (= screen points). */
+export interface SelectionRect {
+  x: number
+  y: number
+  width: number
+  height: number
 }
 
 /**
@@ -193,6 +207,14 @@ export interface KlairApi {
   openSettings(pane: SettingsPane): Promise<void>
   openWindow(name: WindowName): Promise<void>
   openShot(captureId: number): Promise<string | null>
+
+  /** Hide the panel and show the selection overlay. */
+  startSelection(): Promise<void>
+  /** From the overlay: capture this area, save it and pin it as the context. */
+  finishSelection(rect: SelectionRect): Promise<void>
+  cancelSelection(): Promise<void>
+  /** Unpin the selection: ideas and answers follow the screen again. */
+  clearSelection(): Promise<void>
 }
 
 export type KlairInvokeMethod = Exclude<keyof KlairApi, 'onState'>
@@ -226,7 +248,11 @@ export const KLAIR_INVOKE_METHODS: KlairInvokeMethod[] = [
   'runHealth',
   'openSettings',
   'openWindow',
-  'openShot'
+  'openShot',
+  'startSelection',
+  'finishSelection',
+  'cancelSelection',
+  'clearSelection'
 ]
 
 export const STATE_CHANNEL = 'klair:state'

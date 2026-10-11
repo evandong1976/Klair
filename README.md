@@ -65,6 +65,12 @@ pnpm app            # builds, signs, copies your env files and opens dist/mac-ar
 
 Quit `pnpm dev` first (only one Klair runs at a time). The app starts outside the repo, so `pnpm app` copies `.env.local` / `.env` into `~/Library/Application Support/Klair` (`scripts/copy-env.sh`; rerun `pnpm app` after editing them). Click **Allow** on a permission row in the Start window to make macOS list Klair, then switch it on. For the fn key, **Check again** picks up the grant; Screen Recording needs Klair quit and reopened. `pnpm app` signs the build with a local self-signed certificate (`scripts/sign-dev.sh`, kept in its own `klair-dev` keychain), so the grant survives rebuilds. If System Settings shows Klair as allowed but the app says it isn't, the entry is stale: run `tccutil reset ScreenCapture com.klair.app`, then allow it again.
 
+## Selecting an area
+
+In the open panel, click **Select area** (or press **⌘S**). The panel steps aside and the screen dims; drag out a rectangle (its size shows as you drag) and let go. **esc** or a plain click cancels. Klair captures that area at full Retina resolution, saves it like any capture (a PNG in the session's `shots/` folder and a `captures` row with `source = 'selection'` in SQLite, uploaded to TigerData when the session ends), writes a note about it, and reopens the panel with ideas for it.
+
+The selection is **pinned as the context**: ideas, "Ask about your selection…" and picked ideas use it, and its image goes with every answer, until you press **Use whole screen** on the panel's selection card or select another area. Automatic captures are still stored meanwhile; clearing the selection hands over to the latest one.
+
 ## Chrome extension
 
 `extension/` is a Manifest V3 extension ("Klair for Chrome"). On each new page, including in-app navigation on single-page sites, it reads the page's rendered text, title and URL and posts it to Klair at `http://127.0.0.1:47821` (`src/main/bridge.ts`).

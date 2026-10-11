@@ -13,6 +13,8 @@ export function suggestionsFromNote(input: {
   capturedAt: string
   /** Title of the Chrome page this screen shows, when its full text was matched. */
   pageTitle?: string | null
+  /** An area the user selected, rather than a whole-screen capture. */
+  selection?: boolean
 }): SuggestionSet {
   const id = randomUUID()
   const at = new Date(input.capturedAt).toLocaleTimeString([], {
@@ -28,7 +30,11 @@ export function suggestionsFromNote(input: {
     whereTitle: input.note.topic,
     whereRead: input.note.whereRead.slice(0, 240),
     sources: [
-      { kind: 'screen', label: `On screen · ${at}`, captureId: input.captureId },
+      {
+        kind: 'screen',
+        label: `${input.selection ? 'Your selection' : 'On screen'} · ${at}`,
+        captureId: input.captureId
+      },
       ...(input.pageTitle
         ? [
             {

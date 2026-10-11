@@ -66,7 +66,7 @@ export async function makeVisionNote(
   meta: ActiveWindow,
   sessionId: number,
   page: PageContext | null = null,
-  signal?: AbortSignal
+  options: { selection?: boolean; signal?: AbortSignal } = {}
 ): Promise<VisionNote> {
   const cached = cache.get(`note:${hash}`)
   if (cached) {
@@ -80,7 +80,7 @@ export async function makeVisionNote(
     generateText({
       model: fastModel,
       system: SYSTEM,
-      abortSignal: signal,
+      abortSignal: options.signal,
       output: Output.object({ schema: noteSchema }),
       ...opts,
       messages: [
@@ -93,6 +93,14 @@ export async function makeVisionNote(
                 ? `Window metadata (may be incomplete): ${metaLine}`
                 : 'No window metadata.'
             },
+            ...(options.selection
+              ? [
+                  {
+                    type: 'text' as const,
+                    text: 'The user selected this area of their screen on purpose. Describe it in detail and quote its text; make the topic, the note and all three ideas about this selection.'
+                  }
+                ]
+              : []),
             ...(page
               ? [
                   {

@@ -30,6 +30,9 @@ export class ControllerCore {
   panelOpen = false
   quietUntil = 0
   currentCaptureId: number | null = null
+  /** A selected area the user pinned as the context (see pin / unpin). */
+  pinnedCaptureId: number | null = null
+  private latestAutoCaptureId: number | null = null
   dwellStart = 0
   generation = 0
   inflightGeneration: number | null = null
@@ -70,9 +73,31 @@ export class ControllerCore {
 
   /** A capture tick. `changed` frames carry the new committed capture id. */
   onCapture(captureId: number | null, changed: boolean): Effect[] {
+    if (!changed && this.currentCaptureId !== null) return []
+    if (captureId === null) return []
+    this.latestAutoCaptureId = captureId
+    // A selected area pinned as the context stays put; automatic captures are still
+    // stored, and the latest one takes over when the selection is cleared.
+    if (this.pinnedCaptureId !== null) return []
+    return this.switchTo(captureId)
+  }
+
+  /** A selected area becomes the context until it's cleared or replaced. */
+  pin(captureId: number): Effect[] {
+    this.pinnedCaptureId = captureId
+    return this.switchTo(captureId)
+  }
+
+  /** Back to following the screen: the latest automatic capture is the context again. */
+  unpin(): Effect[] {
+    if (this.pinnedCaptureId === null) return []
+    this.pinnedCaptureId = null
+    const latest = this.latestAutoCaptureId
+    return latest === null || latest === this.currentCaptureId ? [] : this.switchTo(latest)
+  }
+
+  private switchTo(captureId: number): Effect[] {
     const effects: Effect[] = []
-    if (!changed && this.currentCaptureId !== null) return effects
-    if (captureId === null) return effects
     this.currentCaptureId = captureId
     this.dwellStart = this.now()
     // A suggestion request for the previous screen is now stale; its result will be dropped.

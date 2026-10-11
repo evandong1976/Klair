@@ -51,12 +51,12 @@ async function copy(client: PoolClient, data: local.SessionExport): Promise<numb
   const captures = await insertRows(
     client,
     `insert into captures (session_id, captured_at, screenshot_path, note, app_name, window_title,
-       url, image_hash, status, index_status, note_path, page_id, local_id)
+       url, image_hash, status, index_status, note_path, page_id, source, local_id)
      select ${sid}, captured_at, screenshot_path, note, app_name, window_title,
-       url, image_hash, status, index_status, note_path, page_id, id
+       url, image_hash, status, index_status, note_path, page_id, coalesce(source, 'auto'), id
      from jsonb_to_recordset($1::jsonb) as x(id bigint, captured_at timestamptz, screenshot_path text,
        note text, app_name text, window_title text, url text, image_hash text, status text,
-       index_status text, note_path text, page_id bigint)
+       index_status text, note_path text, page_id bigint, source text)
      returning id, local_id`,
     data.captures.map((r) => ({ ...r, page_id: remap(pages, r.page_id) }))
   )

@@ -25,6 +25,9 @@ export interface CaptureMeta {
   imageHash: string
 }
 
+/** 'auto': taken by the capture loop. 'selection': an area the user selected. */
+export type CaptureSource = 'auto' | 'selection'
+
 export interface ActivityRow {
   time: Date
   sessionId: number
@@ -163,7 +166,9 @@ create table if not exists pending_remote_deletes (remote_id integer primary key
 /** Columns added after a table first shipped (SQLite has no "add column if not exists"). */
 const ADDED_COLUMNS: [table: string, column: string, type: string][] = [
   // The Chrome page a screenshot shows, when the note model matched them.
-  ['captures', 'page_id', 'integer references pages(id) on delete set null']
+  ['captures', 'page_id', 'integer references pages(id) on delete set null'],
+  // 'auto' (the capture loop) or 'selection' (an area the user selected with ⌘S).
+  ['captures', 'source', "text not null default 'auto'"]
 ]
 
 function addColumns(d: DatabaseSync): void {
@@ -484,17 +489,19 @@ export async function setPageIndexStatus(
 export async function insertPendingCapture(
   sessionId: number,
   path: string,
-  meta: CaptureMeta
+  meta: CaptureMeta,
+  source: CaptureSource = 'auto'
 ): Promise<number> {
   return run(
-    `insert into captures (session_id, screenshot_path, app_name, window_title, url, image_hash, status)
-     values (?, ?, ?, ?, ?, ?, 'pending')`,
+    `insert into captures (session_id, screenshot_path, app_name, window_title, url, image_hash, status, source)
+     values (?, ?, ?, ?, ?, ?, 'pending', ?)`,
     sessionId,
     path,
     meta.appName ?? null,
     meta.windowTitle ?? null,
     meta.url ?? null,
-    meta.imageHash
+    meta.imageHash,
+    source
   )
 }
 
@@ -549,9 +556,10 @@ export async function getCapture(id: number): Promise<{
   note: string | null
   capturedAt: string
   pageId: number | null
+  source: CaptureSource
 } | null> {
   const r = one(
-    `select id, session_id, screenshot_path, note, captured_at, page_id from captures where id = ? and status = 'committed'`,
+    `select id, session_id, screenshot_path, note, captured_at, page_id, source from captures where id = ? and status = 'committed'`,
     id
   )
   return r
@@ -561,7 +569,8 @@ export async function getCapture(id: number): Promise<{
         path: String(r.screenshot_path),
         note: (r.note as string) ?? null,
         capturedAt: String(r.captured_at),
-        pageId: r.page_id == null ? null : Number(r.page_id)
+        pageId: r.page_id == null ? null : Number(r.page_id),
+        source: r.source as CaptureSource
       }
     : null
 }
@@ -771,8 +780,13 @@ export async function timeline(sessionId: number): Promise<TimelineItem[]> {
   const seen = all(
     `select min(captured_at) as at, coalesce(window_title, app_name, 'Screen') as title,
             coalesce(url, app_name, '') as detail, count(*) as n
-     from captures where session_id = ? and status = 'committed'
+     from captures where session_id = ? and status = 'committed' and source = 'auto'
      group by 2, 3 order by at limit 40`,
+    sessionId
+  )
+  const selected = all(
+    `select id, captured_at, coalesce(substr(note, 1, 90), '') as note from captures
+     where session_id = ? and status = 'committed' and source = 'selection' order by id limit 40`,
     sessionId
   )
   const asked = all(
@@ -793,6 +807,12 @@ export async function timeline(sessionId: number): Promise<TimelineItem[]> {
         detail: `${n} capture${n === 1 ? '' : 's'}${r.detail ? ` · ${r.detail}` : ''}`
       }
     }),
+    ...selected.map((r) => ({
+      at: String(r.captured_at),
+      kind: 'seen' as const,
+      title: 'You selected an area of the screen',
+      detail: String(r.note)
+    })),
     ...pages.map((r) => ({
       at: String(r.captured_at),
       kind: 'switched' as const,

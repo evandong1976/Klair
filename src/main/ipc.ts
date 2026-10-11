@@ -78,7 +78,17 @@ const handlers: Handlers = {
     if (url) await shell.openExternal(url)
   },
   openWindow: async (name) => (name === 'sessions' ? windows.openSessions() : windows.openStart()),
-  openShot: (id) => c.shotDataUrl(Number(id))
+  openShot: (id) => c.shotDataUrl(Number(id)),
+  startSelection: async () => c.startSelection(),
+  finishSelection: (rect) =>
+    c.finishSelection({
+      x: Number(rect?.x),
+      y: Number(rect?.y),
+      width: Number(rect?.width),
+      height: Number(rect?.height)
+    }),
+  cancelSelection: async () => c.cancelSelection(),
+  clearSelection: async () => c.clearSelection()
 }
 
 export function registerIpc(): void {

@@ -21,7 +21,9 @@ let state: KlairState = {
   toggleKey: cache.get('toggleKey') ?? config.fallbackKeys.toggle,
   lastAnswerTitle: null,
   retentionDays: config.retentionDays,
-  stats: { captures: 0, answers: 0, tabs: 0 }
+  stats: { captures: 0, answers: 0, tabs: 0 },
+  selection: null,
+  selecting: false
 }
 
 const listeners = new Set<(s: KlairState) => void>()

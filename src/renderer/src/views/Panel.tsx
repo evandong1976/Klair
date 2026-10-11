@@ -72,6 +72,10 @@ export function PanelWindow(): React.JSX.Element | null {
         askRef.current?.focus()
         return
       }
+      if (k === 's' && !e.shiftKey && s.session) {
+        e.preventDefault()
+        return void klair.startSelection()
+      }
       if (s.panel === 'ideas' && !e.shiftKey && ['1', '2', '3'].includes(e.key)) {
         e.preventDefault()
         return void klair.pickKey(Number(e.key))
@@ -158,6 +162,47 @@ export function PanelWindow(): React.JSX.Element | null {
           {busy ? <BorderBeam /> : null}
         </MagicCard>
       </section>
+    </div>
+  )
+}
+
+/** The pinned selection: a thumbnail, and a way back to following the whole screen. */
+function SelectionChip({
+  selection
+}: {
+  selection: NonNullable<KlairState['selection']>
+}): React.JSX.Element {
+  const [src, setSrc] = useState<string | null>(null)
+  useEffect(() => {
+    let alive = true
+    void klair.openShot(selection.captureId).then((url) => alive && setSrc(url))
+    return () => {
+      alive = false
+    }
+  }, [selection.captureId])
+  const at = new Date(selection.at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+  return (
+    <div className="flex items-center gap-3 p-2.5 rounded-[14px] border border-blush-line bg-blush-3">
+      {src ? (
+        <img
+          src={src}
+          alt="Your selected area"
+          className="flex-none h-12 max-w-24 rounded-[8px] object-cover border border-white"
+        />
+      ) : (
+        <span className="flex-none h-12 w-16 rounded-[8px] bg-white/70" />
+      )}
+      <span className="flex-1 flex flex-col gap-0.5 min-w-0">
+        <span className="text-[13.5px] font-bold">Using your selection</span>
+        <span className="text-[12.5px] text-muted">{`${selection.width} × ${selection.height} · ${at}`}</span>
+      </span>
+      <Button
+        onClick={() => void klair.clearSelection()}
+        title="Go back to following the whole screen"
+        className="h-8 text-[12.5px]"
+      >
+        Use whole screen
+      </Button>
     </div>
   )
 }
@@ -266,18 +311,19 @@ function IdeasView({
   }
   return (
     <>
+      {state.selection ? <SelectionChip selection={state.selection} /> : null}
       {set ? (
         <div className="flex flex-col gap-2">
-          <PixelLabel>Where you are</PixelLabel>
+          <PixelLabel>{state.selection ? 'Your selection' : 'Where you are'}</PixelLabel>
           <h1 className="m-0 text-[19px] font-extrabold leading-[1.3]">{set.whereTitle}</h1>
           <p className="m-0 text-[14.5px] leading-[1.5] text-ink-2 text-pretty">{set.whereRead}</p>
           <SourceChips sources={set.sources} />
         </div>
       ) : (
         <div className="flex flex-col gap-3">
-          <PixelLabel>Where you are</PixelLabel>
+          <PixelLabel>{state.selection ? 'Your selection' : 'Where you are'}</PixelLabel>
           <AnimatedShinyText className="text-[15px] font-bold">
-            Reading your screen…
+            {state.selection ? 'Reading your selection…' : 'Reading your screen…'}
           </AnimatedShinyText>
           <PixelProgress />
           <span className="text-[13px] text-ink-3">
@@ -309,11 +355,23 @@ function IdeasView({
         </nav>
       ) : null}
 
-      <AskBox
-        askRef={askRef}
-        placeholder="Ask for something else…"
-        onSubmit={(t) => void klair.ask(t)}
-      />
+      <div className="flex items-center gap-2">
+        <div className="flex-1">
+          <AskBox
+            askRef={askRef}
+            placeholder={state.selection ? 'Ask about your selection…' : 'Ask for something else…'}
+            onSubmit={(t) => void klair.ask(t)}
+          />
+        </div>
+        <Button
+          onClick={() => void klair.startSelection()}
+          keyHint="⌘S"
+          title="Drag out an area of the screen for Klair to look at"
+          className="h-[46px] text-[13.5px]"
+        >
+          Select area
+        </Button>
+      </div>
 
       <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 text-[12.5px] font-semibold text-ink-3">
         <span className="flex items-center gap-1.5">
