@@ -7,7 +7,7 @@ import {
   setIndexStatus,
   setPageIndexStatus
 } from './local'
-import { indexSession } from './graphify'
+import { graphifyError, indexSession } from './graphify'
 import { notesDir, sessionDir } from './paths'
 
 // One Graphify extract per session at a time, debounced. Only committed captures
@@ -86,11 +86,7 @@ async function runIndex(sessionId: number): Promise<void> {
     await setIndexStatus(ids, 'failed').catch(() => undefined)
     await setPageIndexStatus(pageIds, 'failed').catch(() => undefined)
     await setFileIndexStatus(fileIds, 'failed').catch(() => undefined)
-    lastResult = {
-      at: new Date().toISOString(),
-      ok: false,
-      detail: (err as Error).message.slice(0, 200)
-    }
+    lastResult = { at: new Date().toISOString(), ok: false, detail: graphifyError(err) }
     console.warn('graphify extract failed:', lastResult.detail)
   } finally {
     j.running = null

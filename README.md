@@ -74,8 +74,9 @@ pnpm dev
    ```bash
    brew install pipx
    pipx ensurepath          # adds ~/.local/bin to your PATH (open a new Terminal after)
-   pipx install graphifyy   # note the double y
+   pipx install "graphifyy[openai]"   # note the double y; [openai] is how Klair reaches OpenRouter
    ```
+   Already installed without `[openai]`? Run `pipx inject graphifyy openai`. Without it every graph comes out empty; the Start window's Graphify row says so.
    Klair finds `graphify` in `~/.local/bin`, `/opt/homebrew/bin` or your shell's PATH by itself. Set `GRAPHIFY_BIN` only if it's somewhere else. Without Graphify, answers still use the session's notes and the current screen.
 4. **fn key (optional):** `pnpm build:native` builds `native/fn-key` against Electron; then allow Input Monitoring. Until then, use ⌃⌥K / ⌃⌥P / ⌃⌥Q / ⌃⌥1–9. Rebuild it after pulling changes to `native/fn-key` (fn 1–9 needs the current build).
 5. **Chrome extension (optional):** `chrome://extensions` › **Developer mode** › **Load unpacked** › the repo's `extension/` folder. See [Chrome extension](#chrome-extension).

@@ -1,7 +1,8 @@
 import { execFile } from 'child_process'
 import { existsSync } from 'fs'
+import { readFile, realpath } from 'fs/promises'
 import { homedir } from 'os'
-import { join } from 'path'
+import { dirname, join } from 'path'
 import { promisify } from 'util'
 import { config } from './config'
 
@@ -76,7 +77,60 @@ export async function indexSession(
       }
     }
   )
-  return `${stdout}\n${stderr}`.trim().slice(-2000)
+  const out = `${stdout}\n${stderr}`.trim().slice(-2000)
+  // The visualization the Knowledge graph pane shows: graph.html next to graph.json.
+  await exportHtml(join(outDir, 'graphify-out', 'graph.json')).catch((err) =>
+    console.warn('graphify export html failed:', (err as Error).message)
+  )
+  return out
+}
+
+/** Write graph.html (Graphify's interactive view) next to a graph.json. */
+export async function exportHtml(graph: string): Promise<void> {
+  if (!existsSync(graph)) return
+  await run(await bin(), ['export', 'html', '--graph', graph], {
+    timeout: 120_000,
+    maxBuffer: 4 * 1024 * 1024,
+    cwd: join(graph, '..')
+  })
+}
+
+/** Graphify's own explanation of a failure, with the fix when it names a missing package. */
+export function graphifyError(err: unknown): string {
+  const e = err as { stderr?: string; stdout?: string; message?: string }
+  const text = `${e.stderr ?? ''}\n${e.stdout ?? ''}\n${e.message ?? ''}`
+  const pkg = /the '([\w-]+)' package is required/.exec(text)?.[1]
+  if (pkg)
+    return `Graphify is missing the "${pkg}" package. In Terminal: pipx inject graphifyy ${pkg}`
+  const lines = text
+    .split('\n')
+    .map((l) => l.trim())
+    .filter(Boolean)
+  return (lines.find((l) => /error/i.test(l)) ?? lines.at(-1) ?? 'graphify failed').slice(0, 200)
+}
+
+/**
+ * Graphify reaches OpenRouter through its OpenAI backend, which needs the optional
+ * `openai` Python package. `pipx install graphifyy` leaves it out, and then every graph
+ * silently comes out empty, so check for it up front using Graphify's own Python.
+ */
+async function missingOpenAiPackage(b: string): Promise<boolean> {
+  try {
+    // pipx: the real script sits in the venv's bin/, next to its python. Otherwise read
+    // the launcher: a "#!/path/python" line, or pip's sh wrapper (paths with spaces).
+    const real = await realpath(b)
+    const head = (await readFile(real, 'utf8')).slice(0, 400)
+    const python = [
+      join(dirname(real), 'python'),
+      /exec' "([^"]+)"/.exec(head)?.[1],
+      /^#!(\S*python\S*)/.exec(head)?.[1]
+    ].find((p): p is string => !!p && existsSync(p))
+    if (!python) return false // can't tell; don't block
+    await run(python, ['-c', 'import openai'], { timeout: 15_000 })
+    return false
+  } catch {
+    return true
+  }
 }
 
 /** Retrieve context for a question, capped at a token budget. Local, no LLM. */
@@ -98,6 +152,13 @@ export async function graphifyAvailable(): Promise<{ ok: boolean; detail: string
   try {
     const b = await bin()
     await run(b, ['--help'], { timeout: 10_000 })
+    if (await missingOpenAiPackage(b)) {
+      return {
+        ok: false,
+        detail:
+          'Graphify is missing the "openai" package, so it can\'t build graphs. In Terminal: pipx inject graphifyy openai, then click Check again.'
+      }
+    }
     return { ok: true, detail: `Found ${b}` }
   } catch (err) {
     const code = (err as NodeJS.ErrnoException).code
