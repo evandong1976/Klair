@@ -29,41 +29,73 @@ function inline(text: string): ReactNode[] {
   return out
 }
 
+const BULLET = /^\s*[-*•]\s+/
+const NUMBERED = /^\s*\d+[.)]\s+/
+const HEADING = /^\s*#{1,4}\s+/
+
+/**
+ * Line by line: headings, bullet and numbered lists, and paragraphs can follow each
+ * other without a blank line between them (longer answers mix them freely).
+ */
 export function Markdown({ text }: { text: string }): React.JSX.Element {
-  const paras = text.trim().split(/\n{2,}/)
+  const blocks: ReactNode[] = []
+  let para: string[] = []
+  let list: { ordered: boolean; items: string[] } | null = null
+  const flushPara = (): void => {
+    if (para.length)
+      blocks.push(
+        <p key={blocks.length} className="m-0 text-pretty">
+          {inline(para.join(' '))}
+        </p>
+      )
+    para = []
+  }
+  const flushList = (): void => {
+    if (!list) return
+    const items = list.items.map((it, j) => <li key={j}>{inline(it)}</li>)
+    blocks.push(
+      list.ordered ? (
+        <ol key={blocks.length} className="m-0 pl-5 list-decimal flex flex-col gap-1.5">
+          {items}
+        </ol>
+      ) : (
+        <ul key={blocks.length} className="m-0 pl-5 list-disc flex flex-col gap-1.5">
+          {items}
+        </ul>
+      )
+    )
+    list = null
+  }
+  for (const line of text.trim().split('\n')) {
+    if (!line.trim()) {
+      flushPara()
+      flushList()
+    } else if (HEADING.test(line)) {
+      flushPara()
+      flushList()
+      blocks.push(
+        <h3 key={blocks.length} className="m-0 mt-1 text-[15px] font-extrabold text-ink">
+          {inline(line.replace(HEADING, ''))}
+        </h3>
+      )
+    } else if (BULLET.test(line) || NUMBERED.test(line)) {
+      flushPara()
+      const ordered = NUMBERED.test(line)
+      if (list && list.ordered !== ordered) flushList()
+      list ??= { ordered, items: [] }
+      list.items.push(line.replace(ordered ? NUMBERED : BULLET, ''))
+    } else if (list && /^\s{2,}\S/.test(line)) {
+      // A wrapped list item continues on an indented line.
+      list.items[list.items.length - 1] += ` ${line.trim()}`
+    } else {
+      flushList()
+      para.push(line.trim())
+    }
+  }
+  flushPara()
+  flushList()
   return (
-    <div className="flex flex-col gap-2.5 text-[14.5px] leading-[1.55] text-ink-2">
-      {paras.map((p, i) => {
-        const lines = p.split('\n')
-        if (lines.every((l) => /^\s*[-*]\s+/.test(l)))
-          return (
-            <ul key={i} className="m-0 pl-5 list-disc flex flex-col gap-1.5">
-              {lines.map((l, j) => (
-                <li key={j}>{inline(l.replace(/^\s*[-*]\s+/, ''))}</li>
-              ))}
-            </ul>
-          )
-        if (lines.every((l) => /^\s*\d+[.)]\s+/.test(l)))
-          return (
-            <ol key={i} className="m-0 pl-5 list-decimal flex flex-col gap-1.5">
-              {lines.map((l, j) => (
-                <li key={j}>{inline(l.replace(/^\s*\d+[.)]\s+/, ''))}</li>
-              ))}
-            </ol>
-          )
-        if (/^#{1,4}\s/.test(p))
-          return (
-            <h3 key={i} className="m-0 text-[15px] font-extrabold text-ink">
-              {inline(p.replace(/^#{1,4}\s/, ''))}
-            </h3>
-          )
-        return (
-          <p key={i} className="m-0 text-pretty">
-            {inline(p.replace(/\n/g, ' '))}
-          </p>
-        )
-      })}
-    </div>
+    <div className="flex flex-col gap-2.5 text-[14.5px] leading-[1.55] text-ink-2">{blocks}</div>
   )
 }
 

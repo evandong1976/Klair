@@ -668,7 +668,10 @@ async function noteFor(
     const note = await pending
     mem.note = note
     currentTopic = note.topic
-    if (page && note.chromePageOnScreen) {
+    // Linked when the note model sees the page in the screenshot, or when Chrome's front
+    // tab is that page: then answers (summaries above all) get the whole page.
+    const frontTab = frame.meta.url && page && samePage(frame.meta.url, page.url)
+    if (page && (note.chromePageOnScreen || frontTab)) {
       mem.pageId = page.id
       await store.linkCaptureToPage(mem.id, page.id)
     }
