@@ -28,6 +28,7 @@ import { DownloadWatcher, type Download } from './downloads'
 import { extractText, fileKind, imageForModel } from './files'
 import * as store from './local'
 import { answerToText, runAssistance } from './execute'
+import { compactGraph, COURSEWORK_QUERY, queryContext, screenQuery } from './graphify'
 import { pickHighlights, samePage, type HighlightSet } from './highlights'
 import { lastHealth, runHealth } from './health'
 import { cancelIndex, scheduleIndex } from './indexer'
@@ -38,7 +39,15 @@ import {
   type PageContext,
   type VisionNote
 } from './notes'
-import { filesDir, notesDir, PROJECT_DIR_PREFIX, projectDir, projectsRoot, shotsDir } from './paths'
+import {
+  filesDir,
+  graphPath,
+  notesDir,
+  PROJECT_DIR_PREFIX,
+  projectDir,
+  projectsRoot,
+  shotsDir
+} from './paths'
 import { retrieve } from './retrieve'
 import { getState, setState } from './state'
 import { suggestionsFromNote } from './suggest'
@@ -643,12 +652,49 @@ interface StartedNote {
   note: Promise<VisionNote>
 }
 
+/**
+ * What the project's Graphify graph holds around this screen (found from the window and
+ * page titles and the URL, since the note isn't written yet), and its coursework: exams,
+ * homework and deadlines, so ideas can aim at what's coming. Local, no model call,
+ * ~0.1–0.3 s per query; empty when the project has no graph yet or nothing matches.
+ */
+async function graphNearScreen(
+  sid: number,
+  frame: Frame,
+  page: PageContext | null
+): Promise<string> {
+  const graph = graphPath(sid)
+  const ask = (q: string, budget: number): Promise<string> =>
+    q
+      ? queryContext(graph, q, budget).then(
+          (out) => compactGraph(out, 28),
+          () => ''
+        )
+      : Promise.resolve('')
+  const [near, coursework] = await Promise.all([
+    ask(screenQuery(frame.meta.windowTitle, page?.title ?? null, frame.meta.url), 600),
+    ask(COURSEWORK_QUERY, 300)
+  ])
+  const nearLines = new Set(near.split('\n'))
+  const due = coursework
+    .split('\n')
+    .filter((l) => l && !nearLines.has(l))
+    .slice(0, 12)
+  return [
+    near ? `Near this screen:\n${near}` : '',
+    due.length ? `Coursework (exams, homework, deadlines):\n${due.join('\n')}` : ''
+  ]
+    .filter(Boolean)
+    .join('\n\n')
+}
+
 async function startNote(sid: number, frame: Frame, selection = false): Promise<StartedNote> {
   const page = livePage && Date.now() - livePage.at < LIVE_PAGE_MS ? livePage : null
-  const soFar = await projectContext(sid)
+  const [soFar, graph] = await Promise.all([projectContext(sid), graphNearScreen(sid, frame, page)])
   const note = makeVisionNote(frame.png, frame.hash, frame.meta, sid, page, {
     selection,
-    projectContext: soFar
+    projectContext: soFar,
+    graphContext: graph
   })
   note.catch(() => {}) // a dropped note must not surface as an unhandled rejection
   return { page, soFar, note }

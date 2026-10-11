@@ -47,14 +47,15 @@ export function suggestionsFromNote(input: {
     ],
     ideas: input.note.ideas.slice(0, 9).map((idea, i) => {
       const title = idea.title.slice(0, 60)
-      const subtitle = idea.subtitle.slice(0, 90)
+      const subtitle = idea.subtitle.slice(0, 120)
       return {
         id: `${id}:${i + 1}`,
         key: i + 1,
         title,
         subtitle,
         kind: idea.kind,
-        prompt: `${title}. ${subtitle}`
+        // The note model's full instruction for this idea; older notes only had the labels.
+        prompt: idea.prompt?.trim().slice(0, 600) || `${title}. ${subtitle}`
       }
     })
   }

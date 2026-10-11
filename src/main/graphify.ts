@@ -159,6 +159,60 @@ export async function queryContext(
   return stdout.trim()
 }
 
+/**
+ * Graphify's query output trimmed for a prompt: concept names and the links between
+ * them, without file references, notices or edge provenance. At most `maxLines` lines.
+ */
+export function compactGraph(out: string, maxLines = 40): string {
+  const lines: string[] = []
+  for (const raw of out.split('\n')) {
+    const line = raw.trim()
+    const node = /^NODE (.+?)(?: \[src=.*\])?$/.exec(line)
+    const edge = /^EDGE (.+?) --([\w ]+?)(?: \[\w+\])?--> (.+?)(?: at=.*)?$/.exec(line)
+    if (node) lines.push(`- ${node[1]}`)
+    else if (edge) lines.push(`- ${edge[1]} → ${edge[3]} (${edge[2].replace(/_/g, ' ')})`)
+    if (lines.length === maxLines) break
+  }
+  return lines.join('\n')
+}
+
+/** "Gradient descent - Wikipedia" → "Gradient descent": drops site and app suffixes. */
+function titleTopic(title: string): string {
+  return title.split(/\s+[-|–—·]\s+/)[0].trim()
+}
+
+/**
+ * What to ask the project graph about the screen before its note exists: the window
+ * title and Chrome page title without their site names, plus the URL's last segment,
+ * each word once.
+ */
+export function screenQuery(
+  windowTitle: string | null,
+  pageTitle: string | null,
+  url: string | null
+): string {
+  let slug = ''
+  try {
+    slug = decodeURIComponent((url ?? '').split(/[?#]/)[0].split('/').pop() ?? '')
+  } catch {
+    slug = ''
+  }
+  const seen = new Set<string>()
+  const words: string[] = []
+  for (const part of [windowTitle, pageTitle, slug.replace(/[-_+.]+/g, ' ')]) {
+    for (const w of titleTopic(part ?? '').split(/\s+/)) {
+      const key = w.toLowerCase()
+      if (!w || seen.has(key)) continue
+      seen.add(key)
+      words.push(w)
+    }
+  }
+  return words.join(' ').slice(0, 200)
+}
+
+/** Asked of every project graph alongside the screen, so ideas can aim at what's due. */
+export const COURSEWORK_QUERY = 'exam midterm final quiz homework assignment deadline due'
+
 export async function graphifyAvailable(): Promise<{ ok: boolean; detail: string }> {
   try {
     const b = await bin()
