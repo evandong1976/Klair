@@ -71,6 +71,23 @@ In the open panel, click **Select area** (or press **⌘S**). The panel steps as
 
 The selection is **pinned as the context**: ideas, "Ask about your selection…" and picked ideas use it, and its image goes with every answer, until you press **Use whole screen** on the panel's selection card or select another area. Automatic captures are still stored meanwhile; clearing the selection hands over to the latest one.
 
+## Adding downloads
+
+While a session is observing, Klair watches your Downloads folder. When a file finishes downloading (browsers' temporary `.crdownload` / `.part` / `.download` names are ignored until they're renamed, and the size must stop changing), the flower shows **Add "file"?** with **Add** and **Not now**; the panel shows the same card. Nothing is read until you pick **Add**. Files that were already in Downloads when the session started are never offered.
+
+On **Add**, Klair copies the file into the session folder (`sessions/local-<id>/files/`, files over 200 MB are kept by reference), extracts its text and stores it in SQLite (a `files` row, a searchable note, and a markdown file Graphify indexes). It uploads to TigerData with the session (text and metadata; the file stays on this Mac).
+
+| Type                                  | How it's read                    |
+| ------------------------------------- | -------------------------------- |
+| PDF                                   | macOS PDFKit                     |
+| doc, docx, rtf, odt, html, webarchive | macOS `textutil`                 |
+| pptx, xlsx                            | the text in their slides / cells |
+| txt, md, csv, json, code…             | read directly                    |
+| png, jpg, gif, webp, heic             | described by the vision model    |
+| anything else                         | kept by name only                |
+
+The newest added file goes with answers for 20 minutes ("Your file · …" in sources), so you can ask about it right away; after that it's found by search like any note. The first time, macOS asks whether Klair may access the Downloads folder. `KLAIR_WATCH_DOWNLOADS=off` turns this off; `KLAIR_DOWNLOADS_DIR` watches another folder.
+
 ## Chrome extension
 
 `extension/` is a Manifest V3 extension ("Klair for Chrome"). On each new page, including in-app navigation on single-page sites, it reads the page's rendered text, title and URL and posts it to Klair at `http://127.0.0.1:47821` (`src/main/bridge.ts`).

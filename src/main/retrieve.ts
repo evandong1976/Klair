@@ -67,8 +67,9 @@ export async function retrieve(
       if (seen.has(key)) continue
       seen.add(key)
       const earlier = h.origin === 'remote' || h.sessionId !== opts.sessionId
-      const label =
-        h.provenance === 'assistant'
+      const label = h.fileName
+        ? `Your file · ${h.fileName.slice(0, 40)}`
+        : h.provenance === 'assistant'
           ? `Klair's earlier answer · ${timeLabel(h.createdAt)}`
           : `${earlier ? 'Earlier session' : 'Earlier tab'} · ${timeLabel(h.createdAt)}`
       sources.push({

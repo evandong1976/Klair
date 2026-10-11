@@ -7,6 +7,7 @@ import { BorderBeam } from '../components/magicui/border-beam'
 import { MagicCard } from '../components/magicui/magic-card'
 import { Button, CloseButton, Key, PixelLabel, PixelProgress, SourceChips } from '../components/ui'
 import { isMod, klair, useKlairState } from '../lib/useKlair'
+import { DownloadOfferCards } from './DownloadOffers'
 import { NoticeCard } from './NoticeCard'
 import { ShortcutsView } from './Shortcuts'
 
@@ -311,6 +312,7 @@ function IdeasView({
   }
   return (
     <>
+      {state.downloads.length ? <DownloadOfferCards offers={state.downloads} /> : null}
       {state.selection ? <SelectionChip selection={state.selection} /> : null}
       {set ? (
         <div className="flex flex-col gap-2">

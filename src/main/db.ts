@@ -145,6 +145,27 @@ create index if not exists pages_session_idx on pages (session_id, captured_at);
 alter table captures add column if not exists page_id bigint references pages(id) on delete set null;
 -- 'auto' (capture loop) or 'selection' (an area the user selected).
 alter table captures add column if not exists source text not null default 'auto';
+
+-- Files the user added from Downloads: metadata and extracted text (the file stays on the Mac).
+create table if not exists files (
+  id bigint generated always as identity primary key,
+  session_id bigint not null references sessions(id) on delete cascade,
+  added_at timestamptz not null default now(),
+  name text not null,
+  kind text not null,
+  size bigint not null,
+  original_path text,
+  stored_path text,
+  sha1 text,
+  body text not null default '',
+  extract_status text not null,
+  truncated boolean not null default false,
+  note_path text,
+  index_status text not null default 'pending',
+  local_id bigint
+);
+create index if not exists files_session_idx on files (session_id, added_at);
+alter table notes add column if not exists file_id bigint references files(id) on delete set null;
 `
 
 async function tryStep(client: PoolClient, label: string, sql: string): Promise<boolean> {
@@ -264,13 +285,14 @@ export async function searchNotes(
   if (!q) return []
   const limit = opts.limit ?? 6
   const p = requirePool()
-  const cols = `id, session_id, capture_id, provenance, topic, body, created_at`
+  const cols = `n.id, n.session_id, n.capture_id, n.provenance, n.topic, n.body, n.created_at, f.name as file_name`
+  const from = `notes n left join files f on f.id = n.file_id`
   let rows: Record<string, unknown>[] = []
   if (capabilities.textsearch === 'bm25') {
     try {
       const res = await p.query(
-        `select ${cols} from notes
-         order by body <@> to_bm25query($1, 'notes_body_bm25') limit $2`,
+        `select ${cols} from ${from}
+         order by n.body <@> to_bm25query($1, 'notes_body_bm25') limit $2`,
         [q, limit]
       )
       rows = res.rows
@@ -280,9 +302,9 @@ export async function searchNotes(
   }
   if (rows.length === 0) {
     const res = await p.query(
-      `select ${cols} from notes
-       where to_tsvector('english', body) @@ websearch_to_tsquery('english', $1)
-       order by ts_rank(to_tsvector('english', body), websearch_to_tsquery('english', $1)) desc
+      `select ${cols} from ${from}
+       where to_tsvector('english', n.body) @@ websearch_to_tsquery('english', $1)
+       order by ts_rank(to_tsvector('english', n.body), websearch_to_tsquery('english', $1)) desc
        limit $2`,
       [q, limit]
     )
@@ -296,7 +318,8 @@ export async function searchNotes(
     topic: (r.topic as string) ?? null,
     body: r.body as string,
     createdAt: (r.created_at as Date).toISOString(),
-    origin: 'remote' as const
+    origin: 'remote' as const,
+    fileName: (r.file_name as string) ?? null
   }))
 }
 

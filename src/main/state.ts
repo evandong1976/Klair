@@ -23,7 +23,8 @@ let state: KlairState = {
   retentionDays: config.retentionDays,
   stats: { captures: 0, answers: 0, tabs: 0 },
   selection: null,
-  selecting: false
+  selecting: false,
+  downloads: []
 }
 
 const listeners = new Set<(s: KlairState) => void>()

@@ -1,9 +1,10 @@
-import { systemPreferences } from 'electron'
-import { existsSync } from 'fs'
-import { readdir, readFile, rm, unlink, writeFile } from 'fs/promises'
+import { app, systemPreferences } from 'electron'
+import { createReadStream, existsSync } from 'fs'
+import { copyFile, readdir, readFile, rm, stat, unlink, writeFile } from 'fs/promises'
 import { join } from 'path'
 import type { AnswerOutput } from '../shared/blocks'
 import type {
+  DownloadOffer,
   SelectionRect,
   Provenance,
   AnswerState,
@@ -15,18 +16,26 @@ import type {
   SessionDetail,
   SuggestionSet
 } from '../shared/types'
-import { createHash } from 'crypto'
+import { createHash, randomUUID } from 'crypto'
 import { cache } from './cache'
 import { captureArea, CaptureLoop, type Frame } from './capture'
 import { config } from './config'
 import { ControllerCore, type Effect } from './controller-core'
 import * as db from './db'
+import { DownloadWatcher, type Download } from './downloads'
+import { extractText, fileKind, imageForModel } from './files'
 import * as store from './local'
 import { answerToText, runAssistance } from './execute'
 import { lastHealth, runHealth } from './health'
 import { cancelIndex, scheduleIndex } from './indexer'
-import { makeVisionNote, writeNoteFile, type PageContext, type VisionNote } from './notes'
-import { notesDir, SESSION_DIR_PREFIX, sessionDir, sessionsRoot, shotsDir } from './paths'
+import {
+  describeImage,
+  makeVisionNote,
+  writeNoteFile,
+  type PageContext,
+  type VisionNote
+} from './notes'
+import { filesDir, notesDir, SESSION_DIR_PREFIX, sessionDir, sessionsRoot, shotsDir } from './paths'
 import { retrieve } from './retrieve'
 import { getState, setState } from './state'
 import { suggestionsFromNote } from './suggest'
@@ -184,8 +193,10 @@ export async function startSession(name: string): Promise<void> {
       answer: null,
       nudge: false,
       stats: { captures: 0, answers: 0, tabs: 0 },
-      selection: null
+      selection: null,
+      downloads: []
     })
+    offered.clear()
     windows.closeStart()
     beginObserving()
   } catch (err) {
@@ -201,10 +212,12 @@ function beginObserving(): void {
   tickTimer ??= setInterval(() => apply(core.tick()), 1000)
   flushTimer ??= setInterval(() => void flushActivity(), 10_000)
   statsTimer ??= setInterval(() => void refreshStats(), 15_000)
+  startDownloads()
 }
 
 function stopTimers(): void {
   loop?.stop()
+  downloads?.stop()
   for (const t of [tickTimer, flushTimer, statsTimer]) if (t) clearInterval(t)
   tickTimer = flushTimer = statsTimer = null
 }
@@ -212,6 +225,7 @@ function stopTimers(): void {
 export async function pause(): Promise<void> {
   if (!sessionId || getState().observing !== 'on') return
   loop?.stop()
+  downloads?.stop()
   core.setObserving(false)
   setState({ observing: 'paused', nudge: false })
   await store.setSessionStatus(sessionId, 'paused').catch(() => {})
@@ -246,8 +260,10 @@ export async function endSession(): Promise<void> {
     nudge: false,
     answer: null,
     panel: 'closed',
-    selection: null
+    selection: null,
+    downloads: []
   })
+  offered.clear()
   windows.hidePanel()
   await store.setSessionStatus(id, 'ended').catch(() => {})
   scheduleIndex(id, { now: true })
@@ -568,6 +584,158 @@ export function clearSelection(): void {
   apply(core.unpin())
 }
 
+// ------------------------------------------------------------------ downloads
+
+// While a session observes, files that finish downloading are offered (flower pill and
+// panel card). Nothing is read until the user picks Add: then the file is copied into
+// the session folder, its text extracted (or, for an image, described), and stored as
+// a files row, a searchable note and a Graphify file. The newest added file also goes
+// with answers for a while, so the user can ask about it straight away.
+
+const MAX_COPY_BYTES = 200 * 1024 * 1024 // bigger files are kept by reference only
+const RECENT_FILE_MS = 20 * 60_000
+const MAX_OFFERS = 3
+let downloads: DownloadWatcher | null = null
+const offered = new Map<string, Download>()
+
+function startDownloads(): void {
+  if (!config.watchDownloads) return
+  downloads ??= new DownloadWatcher(
+    config.downloadsDir ?? app.getPath('downloads'),
+    onDownload,
+    (err) => console.warn('downloads:', err.message)
+  )
+  downloads.start()
+}
+
+function setOffer(id: string, patch: Partial<DownloadOffer> | null): void {
+  const list = getState().downloads
+  setState({
+    downloads: patch
+      ? list.map((o) => (o.id === id ? { ...o, ...patch } : o))
+      : list.filter((o) => o.id !== id)
+  })
+  if (!patch) offered.delete(id)
+}
+
+function onDownload(d: Download): void {
+  if (!sessionId || getState().observing !== 'on') return
+  const id = randomUUID()
+  offered.set(id, d)
+  const offer: DownloadOffer = {
+    id,
+    name: d.name,
+    size: d.size,
+    kind: fileKind(d.name),
+    at: new Date(d.at).toISOString(),
+    status: 'offered'
+  }
+  // Keep the newest few; older unanswered offers drop off.
+  const list = [...getState().downloads, offer]
+  for (const old of list.slice(0, Math.max(0, list.length - MAX_OFFERS))) offered.delete(old.id)
+  setState({ downloads: list.slice(-MAX_OFFERS) })
+}
+
+export function skipDownload(id: string): void {
+  setOffer(id, null)
+}
+
+function sha1File(path: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const h = createHash('sha1')
+    createReadStream(path)
+      .on('data', (c) => h.update(c))
+      .on('end', () => resolve(h.digest('hex')))
+      .on('error', reject)
+  })
+}
+
+export async function addDownload(id: string): Promise<void> {
+  const d = offered.get(id)
+  const sid = sessionId
+  if (!d || !sid) return setOffer(id, null)
+  const offer = getState().downloads.find((o) => o.id === id)
+  if (!offer || offer.status === 'adding') return
+  setOffer(id, { status: 'adding' })
+  try {
+    const st = await stat(d.path)
+    const kind = fileKind(d.name)
+    let storedPath: string | null = null
+    if (st.size <= MAX_COPY_BYTES) {
+      storedPath = join(filesDir(sid), `${Date.now()}-${d.name.replace(/[/\\:]/g, '_')}`)
+      await copyFile(d.path, storedPath)
+    }
+    const source = storedPath ?? d.path
+    let body = ''
+    let status = 'unsupported'
+    let truncated = false
+    if (kind === 'image') {
+      body = await describeImage(await imageForModel(source, d.name, filesDir(sid)), d.name, sid)
+      status = body ? 'ok' : 'empty'
+    } else {
+      const out = await extractText(source, d.name)
+      body = out.text
+      status = out.status
+      truncated = out.truncated
+    }
+    const fileId = await store.insertFile({
+      sessionId: sid,
+      name: d.name,
+      kind,
+      size: st.size,
+      originalPath: d.path,
+      storedPath,
+      sha1: storedPath ? await sha1File(storedPath) : null,
+      body,
+      extractStatus: status,
+      truncated
+    })
+    const summary = `File "${d.name}" (${kind}, ${Math.round(st.size / 1024)} KB) added from Downloads`
+    const file = await writeNoteFile(
+      notesDir(sid),
+      `file-${fileId}`,
+      {
+        file_id: fileId,
+        name: d.name,
+        kind,
+        added_at: new Date().toISOString(),
+        source: 'downloads',
+        provenance: 'observed'
+      },
+      body ? `# ${d.name}\n\n${body}` : `# ${d.name}\n\n${summary}; its contents can't be read.`
+    )
+    await store.setFileNotePath(fileId, file)
+    await store.insertNote({
+      sessionId: sid,
+      fileId,
+      provenance: 'observed',
+      topic: d.name.slice(0, 80),
+      body: body ? `${summary}:\n\n${body}` : `${summary}; its contents can't be read.`
+    })
+    scheduleIndex(sid)
+    void refreshStats()
+    setOffer(id, {
+      status: 'added',
+      detail:
+        status === 'ok' ? undefined : status === 'unsupported' ? 'kept by name' : 'not readable'
+    })
+    offered.delete(id)
+    setTimeout(() => setOffer(id, null), 6000)
+  } catch (err) {
+    console.warn('adding download failed:', (err as Error).message)
+    setOffer(id, { status: 'failed', detail: (err as Error).message.slice(0, 120) })
+  }
+}
+
+/** The newest file added in the last RECENT_FILE_MS, for answers. */
+async function recentFile(
+  sid: number
+): Promise<{ name: string; kind: string; body: string } | null> {
+  const since = new Date(Date.now() - RECENT_FILE_MS).toISOString()
+  const f = await store.latestFile(sid, since).catch(() => null)
+  return f && f.body ? { name: f.name, kind: f.kind, body: f.body } : null
+}
+
 // ------------------------------------------------------------------ Chrome pages
 
 /**
@@ -830,6 +998,7 @@ async function execute(run: {
 
   try {
     const img = await captureImage(run.captureId)
+    const file = sid ? await recentFile(sid) : null
     const retrieved = sid
       ? await retrieve(`${img.topic} ${run.task}`.slice(0, 300), {
           sessionId: sid,
@@ -852,6 +1021,8 @@ async function execute(run: {
         captureId: run.captureId ?? undefined
       })
     }
+    if (file)
+      screenSources.push({ kind: 'earlier', label: `Your file · ${file.name.slice(0, 40)}` })
     if (img.page && !screenSources.some((s) => s.label.startsWith(PAGE_SOURCE))) {
       screenSources.push(pageSource(img.page.title, run.captureId))
     }
@@ -879,6 +1050,7 @@ async function execute(run: {
       note: img.note,
       topic: img.topic,
       page: img.page,
+      file,
       retrieved,
       previous: run.previous ?? null,
       signal: abort.signal,
